@@ -190,8 +190,9 @@ def _safe(name:str)->str:
     if p.is_absolute() or '..' in p.parts: raise ArchiveError('archive traversal')
     return unicodedata.normalize('NFC',name).casefold()
 def _safe_target(root:Path, name:str)->Path:
+    resolved_root = root.resolve()
     target=(root/name).resolve()
-    if root.resolve() not in target.parents and target != root.resolve(): raise ArchiveError('escape')
+    if resolved_root not in target.parents and target != resolved_root: raise ArchiveError(f'escape: {name} resolves to {target} outside {resolved_root}')
     cur=root
     for part in PurePosixPath(name).parts[:-1]:
         cur=cur/part
