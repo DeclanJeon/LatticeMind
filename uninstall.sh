@@ -7,7 +7,22 @@ CONFIG_FILE="$CONFIG_DIR/config-v1.json"
 python3 - "$CONFIG_FILE" "$PURGE" <<'PY'
 import json,sys,hashlib,os,subprocess,shutil
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Resolve package root: explicit PYTHONPATH entries, then script parent
+for entry in sys.path:
+    candidate = Path(entry) / "latticemind_core"
+    if candidate.is_dir():
+        break
+else:
+    script_dir = Path(__file__).resolve().parent if __file__ != "-" else Path.cwd()
+    candidate = script_dir / "latticemind_core"
+    if not candidate.is_dir():
+        parent_candidate = script_dir.parent / "latticemind_core"
+        if parent_candidate.is_dir():
+            sys.path.insert(0, str(script_dir.parent))
+        else:
+            raise SystemExit("latticemind_core package not found")
+    else:
+        sys.path.insert(0, str(script_dir))
 from latticemind_core.config import load_config
 cfg=load_config(sys.argv[1]); purge=sys.argv[2]=='1'; config=Path(sys.argv[1])
 data=Path(os.environ.get('LATTICEMIND_STATE_ROOT',Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))/'latticemind'))

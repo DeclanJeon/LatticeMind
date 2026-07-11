@@ -123,7 +123,9 @@ def main():
                     if not any(reports.glob("freshness-report-*.json")):
                         print("launchd kickstart succeeded but no report generated; vault likely empty")
                 write_uninstall_manifest(home)
-                uninstall_env = {**env, "PYTHONPATH": str(home / ".local")}
+                uninstall_env = {**env, "PYTHONPATH": str(home / ".local"),
+                                 "LATTICEMIND_CONFIG": str(home / "config/latticemind/config-v1.json"),
+                                 "LATTICEMIND_STATE_ROOT": str(home / "data/latticemind")}
                 run(["bash", str(ROOT / "uninstall.sh")], uninstall_env)
                 remaining = subprocess.run(
                     ["launchctl", "print", f"{gui}/com.latticemind.freshness"],
