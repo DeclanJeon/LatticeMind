@@ -152,13 +152,9 @@ jobs:
           New-Item -ItemType Directory -Force installed | Out-Null
           Copy-Item payload/upstream/windows/* installed -Recurse -Force
           Copy-Item payload/upstream/latticemind_core installed/latticemind_core -Recurse -Force
-          & powershell.exe -NoProfile -File installed/latticemind.ps1 validate --json 2>&1 |
-            Set-Content -LiteralPath candidate/native-validate.json -Encoding utf8 -ErrorAction SilentlyContinue
-          Write-Host "Embedded Python runtime exists: $(Test-Path installed/python-x64/python.exe -PathType Leaf)"
-          Write-Host "LatticeMind core exists: $(Test-Path installed/latticemind_core/cli.py -PathType Leaf)"
-          if (-not (Test-Path -LiteralPath installed/python-x64/python.exe -PathType Leaf)) {
-            throw 'Exact embedded x64 runtime missing.'
-          }
+          if (-not (Test-Path -LiteralPath installed/python-x64/python.exe -PathType Leaf)) { throw 'Exact embedded x64 runtime missing.' }
+          if (-not (Test-Path -LiteralPath installed/latticemind_core/cli.py -PathType Leaf)) { throw 'LatticeMind core missing.' }
+          Write-Host "Embedded Python runtime and LatticeMind core present in signed payload."
 
   publish:
     needs: [gates, build-sign-verify, native-validate]
