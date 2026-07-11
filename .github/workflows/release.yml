@@ -89,6 +89,8 @@ jobs:
         env:
           LATTICEMIND_SIGNING_KEY_B64: ${{ secrets.LATTICEMIND_SIGNING_KEY_B64 }}
           LATTICEMIND_UPSTREAM_COMMIT: ${{ env.UPSTREAM_COMMIT }}
+          LATTICEMIND_WINDOWS_X64_URL: ${{ env.WINDOWS_X64_URL }}
+          LATTICEMIND_WINDOWS_ARM64_URL: ${{ env.WINDOWS_ARM64_URL }}
         run: |
           current=$(git ls-remote origin refs/heads/main | cut -f1); [[ "$current" == '${{ needs.gates.outputs.sha }}' ]] || exit 1
           python3 scripts/build_release.py --output release --runtimes release-runtimes --upstream-dir upstream --version '${{ steps.version.outputs.version }}' --commit '${{ needs.gates.outputs.sha }}' --upstream-url "$UPSTREAM_URL" --upstream-commit "$UPSTREAM_COMMIT" --previous-version '${{ steps.version.outputs.previous }}'
