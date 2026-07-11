@@ -224,9 +224,10 @@ def validate_archive(path:os.PathLike[str]|str,destination:os.PathLike[str]|str,
                 mode=(e.external_attr>>16)&0o170000
                 if mode and mode not in (stat.S_IFREG,stat.S_IFDIR): raise ArchiveError('links or special files')
                 target=_safe_target(dst,e.filename)
-                if root not in target.parents and target!=root: raise ArchiveError('escape')
+                if root not in target.resolve().parents and target.resolve()!=root: raise ArchiveError('escape')
             for e in es:
                 p=_safe_target(dst,e.filename)
+                if root not in p.resolve().parents and p.resolve()!=root: raise ArchiveError('escape')
                 if e.is_dir():p.mkdir(parents=True,exist_ok=True)
                 else:
                     p.parent.mkdir(parents=True,exist_ok=True)
@@ -239,9 +240,10 @@ def validate_archive(path:os.PathLike[str]|str,destination:os.PathLike[str]|str,
             for e in es:
                 if e.issym() or e.islnk() or not(e.isfile() or e.isdir()): raise ArchiveError('links or special files')
                 target=_safe_target(dst,e.name)
-                if root not in target.parents and target!=root: raise ArchiveError('escape')
+                if root not in target.resolve().parents and target.resolve()!=root: raise ArchiveError('escape')
             for e in es:
                 p=_safe_target(dst,e.name)
+                if root not in p.resolve().parents and p.resolve()!=root: raise ArchiveError('escape')
                 if e.isdir():p.mkdir(parents=True,exist_ok=True)
                 else:
                     p.parent.mkdir(parents=True,exist_ok=True); inp=tf.extractfile(e)
