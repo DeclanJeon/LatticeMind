@@ -8,7 +8,7 @@ $Schema = 'job-definition-v1'
 # latticemind-job-v1: native tasks are owned exclusively by this installer.
 $Script = Join-Path $InstallRoot 'latticemind-maintain.ps1'
 $PowerShell = (Get-Command powershell.exe).Source
-$Principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType InteractiveToken -RunLevel Limited
+$Principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 function Test-Ownership($Name) {
     $existing = Get-ScheduledTask -TaskPath '\LatticeMind\' -TaskName $Name -ErrorAction SilentlyContinue
     if ($null -ne $existing -and $existing.Description -notmatch "^$Owner schema=$Schema mode=(morning|nightly|weekly|freshness|health)$") {
@@ -20,7 +20,7 @@ function Test-Ownership($Name) {
         $ExistingXml -notmatch [regex]::Escape("mode=$($Name)") -or
         $ExistingXml -notmatch [regex]::Escape($PowerShell) -or
         $ExistingXml -notmatch [regex]::Escape($Name) -or
-        $ExistingXml -notmatch 'InteractiveToken')) {
+        $ExistingXml -notmatch 'Interactive')) {
         Export-ScheduledTask -TaskPath '\LatticeMind\' -TaskName $Name | Set-Content "$InstallRoot\$Name.pre-latticemind-export.xml"
         throw "exact task ownership/action/principal collision for $Name"
     }

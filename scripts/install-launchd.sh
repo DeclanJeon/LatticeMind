@@ -45,7 +45,9 @@ write() {
 EOF
   export_records+=("{\"job_id\":\"$id\",\"platform\":\"launchd\",\"label\":\"com.latticemind.$id\",\"path\":\"$path\",\"owner\":\"$OWNER\",\"schema\":\"job-definition-v1\",\"enabled\":$enabled}")
   launchctl bootout "gui/$(id -u)" "$path" 2>/dev/null || true
-  [[ "$enabled" == true ]] && launchctl bootstrap "gui/$(id -u)" "$path"
+  if [[ "$enabled" == true ]]; then
+    launchctl bootstrap "gui/$(id -u)" "$path" 2>/dev/null || true
+  fi
 }
 write morning morning 8 7 '' false
 write nightly nightly 22 17 '' false

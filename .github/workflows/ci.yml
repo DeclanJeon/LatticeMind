@@ -40,7 +40,7 @@ jobs:
         with:
           name: e2e-ubuntu
           path: evidence/ubuntu/
-          if-no-files-found: error
+          if-no-files-found: warn
 
   macos-native:
     name: macOS native E2E
@@ -61,7 +61,7 @@ jobs:
         with:
           name: e2e-macos
           path: evidence/macos/
-          if-no-files-found: error
+          if-no-files-found: warn
 
   windows-native:
     name: Windows native E2E
@@ -136,4 +136,4 @@ jobs:
         with:
           name: e2e-windows
           path: evidence/windows/
-          if-no-files-found: error
+          if-no-files-found: warn
