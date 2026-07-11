@@ -53,11 +53,14 @@ slot = slot_arg or slot_identity(job, scheduled.date())
 if slot != slot_identity(job, scheduled.date()):
     raise SystemExit("slot id does not match scheduled occurrence")
 command = ["freshness", "scan"] if job.mode == "freshness" else ["status"]
+import os
+env = os.environ.copy()
+env["PYTHONPATH"] = package_root
 result = run_persisted_slot(
     slot_state,
     job,
     slot,
-    lambda: subprocess.call([sys.executable, "-m", "latticemind_core.cli", *command]),
+    lambda: subprocess.call([sys.executable, "-m", "latticemind_core.cli", *command], env=env),
     scheduled=scheduled,
     now=datetime.now(timezone.utc),
 )

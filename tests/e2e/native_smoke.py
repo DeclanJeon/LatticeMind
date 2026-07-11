@@ -123,7 +123,8 @@ def main():
                     if not any(reports.glob("freshness-report-*.json")):
                         print("launchd kickstart succeeded but no report generated; vault likely empty")
                 write_uninstall_manifest(home)
-                run(["bash", str(ROOT / "uninstall.sh")], env)
+                uninstall_env = {**env, "PYTHONPATH": str(home / ".local")}
+                run(["bash", str(ROOT / "uninstall.sh")], uninstall_env)
                 remaining = subprocess.run(
                     ["launchctl", "print", f"{gui}/com.latticemind.freshness"],
                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -143,17 +144,22 @@ def main():
             raise RuntimeError(f"unsupported platform {system}")
         evidence_root = os.environ.get("LATTICEMIND_EVIDENCE_DIR")
         if evidence_root and system in {"Linux", "Darwin"}:
-            report = next(reports.glob("freshness-report-*.json"))
+            reports = home / "data/latticemind/reports"
+            report_files = list(reports.glob("freshness-report-*.json"))
             destination = Path(evidence_root)
             destination.mkdir(parents=True, exist_ok=True)
+            evidence = {
+                "schema": "native-evidence-v1",
+                "platform": system.lower(),
+                "scheduler": "systemd" if system == "Linux" else "launchd",
+                "cleanup": "passed",
+            }
+            if report_files:
+                evidence["freshness_report_sha256"] = hashlib.sha256(report_files[0].read_bytes()).hexdigest()
+            else:
+                evidence["freshness_report"] = "not_generated_no_real_vault"
             (destination / "native-evidence.json").write_text(
-                json.dumps({
-                    "schema": "native-evidence-v1",
-                    "platform": system.lower(),
-                    "scheduler": "systemd" if system == "Linux" else "launchd",
-                    "freshness_report_sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
-                    "cleanup": "passed",
-                }, sort_keys=True, separators=(",", ":")) + "\n",
+                json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
                 encoding="utf-8",
             )
     print(f"native scheduler smoke passed on {system}")
