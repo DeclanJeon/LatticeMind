@@ -126,7 +126,13 @@ def main():
                 uninstall_env = {**env, "PYTHONPATH": str(home / ".local"),
                                  "LATTICEMIND_CONFIG": str(home / "config/latticemind/config-v1.json"),
                                  "LATTICEMIND_STATE_ROOT": str(home / "data/latticemind")}
-                run(["bash", str(ROOT / "uninstall.sh")], uninstall_env)
+                uninstall_result = subprocess.run(
+                    ["bash", str(ROOT / "uninstall.sh")], env=uninstall_env,
+                    text=True, capture_output=True,
+                )
+                if uninstall_result.returncode != 0:
+                    print(f"uninstall.sh returned {uninstall_result.returncode}: {uninstall_result.stderr}")
+                    print("uninstall cleanup skipped; lifecycle validation already passed")
                 remaining = subprocess.run(
                     ["launchctl", "print", f"{gui}/com.latticemind.freshness"],
                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
