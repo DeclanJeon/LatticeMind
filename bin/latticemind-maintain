@@ -32,13 +32,22 @@ case "$MODE" in
 esac
 
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/latticemind-${UID}.lock"
+cd "$VAULT"
 if command -v gjc >/dev/null; then
   RUN=(gjc -p --no-session --skills "$SKILLS" "$PROMPT")
+elif command -v omp >/dev/null; then
+  RUN=(omp -p --no-session --skills "$SKILLS" --approval-mode write "$PROMPT")
 elif command -v codex >/dev/null; then
   RUN=(codex exec --ephemeral --skip-git-repo-check
     --sandbox workspace-write -C "$VAULT" "$PROMPT")
+elif command -v claude >/dev/null; then
+  RUN=(claude -p --permission-mode acceptEdits "$PROMPT")
+elif command -v opencode >/dev/null; then
+  RUN=(opencode run --dir "$VAULT" "$PROMPT")
+elif command -v pi >/dev/null; then
+  RUN=(pi -p --no-session --approve "$PROMPT")
 else
-  printf 'Neither gjc nor codex is available for maintenance.\n' >&2
+  printf 'No supported agent CLI is available for maintenance.\n' >&2
   exit 69
 fi
 

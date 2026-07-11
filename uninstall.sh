@@ -51,16 +51,30 @@ for rel in load("installed-shared.json"):
     elif out.exists():
         out.unlink()
 
-agents = vault / "AGENTS.md"
-if agents.exists():
-    text = agents.read_text()
+for record in reversed(load("installed-extra.json")):
+    out = Path(record["output"])
+    old = Path(record["backup"]) if record.get("backup") else None
+    if old and old.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(old, out)
+    elif out.exists():
+        out.unlink()
+
+for instruction_file in (vault / "AGENTS.md", vault / "GEMINI.md"):
+    if not instruction_file.exists():
+        continue
+    text = instruction_file.read_text()
     start, end = "<!-- LATTICEMIND:START -->", "<!-- LATTICEMIND:END -->"
     if start in text and end in text:
-        text = text[:text.index(start)].rstrip() + "\n" + text[text.index(end)+len(end):].lstrip("\n")
+        text = (
+            text[:text.index(start)].rstrip()
+            + "\n"
+            + text[text.index(end) + len(end):].lstrip("\n")
+        )
         if text.strip() == "# Agent Instructions":
-            agents.unlink()
+            instruction_file.unlink()
         else:
-            agents.write_text(text)
+            instruction_file.write_text(text)
 PY
 
 rm -f "$HOME/.local/bin/latticemind-maintain" "$HOME/.local/bin/latticemind-status"

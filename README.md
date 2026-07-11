@@ -6,6 +6,7 @@
   <a href="https://github.com/DeclanJeon/LatticeMind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/DeclanJeon/LatticeMind/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee?style=flat-square" alt="MIT License" /></a>
   <a href="https://github.com/eugeniughelbur/obsidian-second-brain"><img src="https://img.shields.io/badge/powered%20by-obsidian--second--brain-8b5cf6?style=flat-square" alt="Powered by obsidian-second-brain" /></a>
+  <a href="https://github.com/DeclanJeon/LatticeMind/releases/latest"><img src="https://img.shields.io/github/v/release/DeclanJeon/LatticeMind?style=flat-square&color=22d3ee" alt="Latest release" /></a>
   <img src="https://img.shields.io/badge/notes-local%20first-111827?style=flat-square" alt="Local-first notes" />
 </p>
 
@@ -16,15 +17,31 @@
 LatticeMind is an opinionated installer and safety layer around
 [obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain),
 inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
-It connects one local Markdown vault to **GJC** and **Codex**, adds AI-first note
-rules, and schedules bounded maintenance that can compound knowledge without
-turning an existing vault into an uncontrolled rewrite experiment.
+It connects one local Markdown vault to **GJC, Codex, Claude Code, OpenCode,
+Gemini CLI, Pi, OMP, and Hermes**, adds AI-first note rules, and schedules
+bounded maintenance without turning an existing vault into an uncontrolled
+rewrite experiment. Linux, macOS, and Windows are supported.
 
 ## One-line install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.sh | \
   bash -s -- --vault "$HOME/Documents/Obsidian Vault" --name "Your Name" --preset builder
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.ps1 |
+  iex
+```
+
+To select a vault, preset, or agent subset:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.ps1))) `
+  -Vault "$HOME\Documents\My Vault" -Preset builder `
+  -Agents codex,claude,opencode,omp
 ```
 
 The default vault is `~/Documents/Obsidian Vault` when it exists, otherwise
@@ -40,19 +57,18 @@ bash scripts/install-local.sh --vault /path/to/vault --name "Your Name"
 ## What one install wires together
 
 ```text
-                       local Markdown vault
-                    /           |           \
-             native skills   AI-first rules   scheduled care
-              /       \            |          /    |    |    \
-            GJC      Codex       sources     AM  nightly week health
+                            local Markdown vault
+                       /            |             \
+                portable skills  AI-first rules  scheduled care
+              /   /   /   /   \       |         /   |   |   \
+           GJC OMP Codex Claude OpenCode ...   AM nightly week health
 ```
 
 | Layer | Installed behavior |
 |---|---|
 | Vault | Builder-ready folders, templates, Bases, dashboard, operating manual |
 | Knowledge | Source-preserving notes, dated claims, confidence labels, wikilinks |
-| GJC | 43 globally discoverable user skills under `~/.gjc/skills/` |
-| Codex | 43 native Agent Skills under `<vault>/.agents/skills/` |
+| Agent layer | GJC · Codex · Claude Code · OpenCode · Gemini CLI · Pi · OMP · Hermes |
 | Automation | Morning note, nightly consolidation, weekly review, health audit |
 | Recovery | Timestamped backups and a content-preserving uninstaller |
 
@@ -68,19 +84,16 @@ obsidian-synthesize  discover patterns across linked notes
 obsidian-health      audit structure without destructive cleanup
 ```
 
-With GJC:
+Invocation follows each agent's native model:
 
 ```text
-/skill:obsidian-save
-/skill:obsidian-ingest https://example.com/article
-/skill:obsidian-architect /path/to/codebase
-```
-
-With Codex, start in the vault and invoke a native skill:
-
-```text
-$obsidian-save
-$obsidian-find "authentication decisions"
+GJC / OMP       /skill:obsidian-save
+Codex           $obsidian-save
+Claude Code     /obsidian-save
+OpenCode        run the obsidian-save command or describe the task
+Gemini CLI      /obsidian-save
+Pi              /obsidian-save
+Hermes          browse/install the obsidian-save native skill
 ```
 
 ## Safety model
@@ -90,8 +103,8 @@ LatticeMind therefore makes these choices by default:
 
 1. **Existing files win.** Scaffold files are copied only when the destination
    does not already exist.
-2. **Skill collisions are backed up.** Replaced GJC and Codex skills are copied
-   to a timestamped recovery directory.
+2. **Skill collisions are backed up.** Replaced agent skills and command files
+   are copied to a timestamped, file-level recovery directory.
 3. **Raw evidence remains immutable.** Maintenance prompts preserve source
    material and user-authored prose.
 4. **Automation has a narrow write scope.** Scheduled jobs operate on root
@@ -104,7 +117,8 @@ LatticeMind therefore makes these choices by default:
 
 ## Scheduled maintenance
 
-On Linux with a user systemd session, four persistent timers are enabled:
+On Linux, systemd user timers are installed. On Windows, equivalent Task
+Scheduler jobs are registered:
 
 | Timer | Default time | Purpose |
 |---|---:|---|
@@ -113,8 +127,9 @@ On Linux with a user systemd session, four persistent timers are enabled:
 | Weekly | Friday 18:17 | Build an evidence-linked weekly review |
 | Health | Sunday 21:17 | Run a report-first structural audit |
 
-GJC is preferred as the unattended agent backend. Codex is used as a fallback.
-Disable automation during installation with `--no-schedule`.
+GJC is preferred as the unattended backend, followed by OMP, Codex, Claude
+Code, OpenCode, and Pi. Disable automation with `--no-schedule` on Unix or
+`-NoSchedule` on Windows.
 
 ## Installer options
 
@@ -122,6 +137,7 @@ Disable automation during installation with `--no-schedule`.
 --vault PATH          Obsidian vault path
 --name NAME           Vault owner name
 --preset PRESET       default|builder|executive|creator|researcher
+--agents LIST         all or gjc,codex,claude,opencode,gemini,pi,omp,hermes
 --no-gjc              Skip global GJC skills
 --no-codex            Skip Codex vault skills
 --no-schedule         Skip systemd user timers
@@ -140,13 +156,18 @@ Remove the integration without deleting notes:
 bash ~/.local/share/latticemind/uninstall.sh
 ```
 
+```powershell
+powershell -File "$env:LOCALAPPDATA\LatticeMind\current\uninstall.ps1"
+```
+
 ## Requirements
 
-- Linux or macOS
-- Bash, Git, and Python 3
+- Linux, macOS, or Windows 10/11
+- Unix: Bash, Git, and Python 3
+- Windows: PowerShell 5.1+; release bundles require no Bash build step
 - An existing or new Obsidian vault
-- GJC and/or [Codex CLI](https://github.com/openai/codex)
-- systemd user services for scheduled maintenance; optional
+- At least one supported agent CLI
+- systemd user services or Windows Task Scheduler for optional maintenance
 
 Research commands may require provider keys supported by the upstream project.
 Core vault commands do not require extra research API keys.
@@ -156,26 +177,35 @@ Core vault commands do not require extra research API keys.
 LatticeMind deliberately does not fork the knowledge engine. At install time it:
 
 1. fetches the selected upstream `obsidian-second-brain` revision;
-2. builds its native Codex skill distribution;
+2. builds all native upstream distributions;
 3. stages the chosen vault preset in a temporary directory;
 4. merges only missing scaffold files into the target vault;
-5. installs shared references and scripts with backups;
-6. adapts the generated skills to GJC's user-skill discovery;
-7. installs bounded, lock-protected maintenance timers.
+5. installs agent-specific resources with file-level backups;
+6. adapts portable skills to GJC and OMP discovery;
+7. installs bounded maintenance through systemd or Windows Task Scheduler.
 
 This keeps the installer small, auditable, and aligned with upstream improvements.
 Set `LATTICEMIND_UPSTREAM_REF` to pin a release or commit.
+
+## Versioning and Releases
+
+Every green push to `main` produces a new `v0.2.<run>` GitHub Release. Release
+notes are generated from the commits since the previous version, and each
+release carries `latticemind-dist.zip`: prebuilt agent distributions, all five
+vault presets, and the Windows runtime. The PowerShell installer always consumes
+the latest successful release rather than rebuilding Unix shell adapters.
 
 ## Development
 
 ```bash
 bash -n install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
+python3 -m py_compile scripts/*.py
 shellcheck install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
 bash tests/install-smoke.sh
 ```
 
 The smoke test creates an isolated home directory and vault, verifies existing
-content hashes, installs both agent integrations, runs status checks, uninstalls,
+content hashes, installs every agent integration, runs status checks, uninstalls,
 and confirms the original skill and note content are restored.
 
 ## Credits
@@ -183,8 +213,8 @@ and confirms the original skill and note content are restored.
 The core commands, schemas, and vault engine come from
 [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)
 under the MIT License. LatticeMind contributes cross-agent installation,
-non-destructive merging, GJC adaptation, recovery manifests, and bounded systemd
-automation.
+Windows support, non-destructive merging, GJC/OMP adaptation, recovery
+manifests, automatic releases, and bounded scheduled maintenance.
 
 ## License
 

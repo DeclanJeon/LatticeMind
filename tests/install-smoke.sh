@@ -23,6 +23,12 @@ bash "$ROOT/scripts/install-local.sh" \
 [[ -f "$VAULT/.agents/skills/obsidian-save/SKILL.md" ]]
 [[ -f "$HOME/.gjc/skills/obsidian-save/SKILL.md" ]]
 [[ -f "$VAULT/.codex/references/ai-first-rules.md" ]]
+[[ -f "$HOME/.claude/commands/obsidian-save.md" ]]
+[[ -f "$VAULT/.opencode/commands/obsidian-save.md" ]]
+[[ -f "$VAULT/.gemini/commands/obsidian-save.md" ]]
+[[ -f "$VAULT/.pi/prompts/obsidian-save.md" ]]
+[[ -f "$HOME/.omp/agent/managed-skills/obsidian-save/SKILL.md" ]]
+[[ -f "$HOME/.hermes/skills/obsidian-second-brain/vault/obsidian-save/SKILL.md" ]]
 [[ -f "$VAULT/Templates/Daily Note.md" ]]
 [[ -x "$HOME/.local/bin/latticemind-status" ]]
 [[ "$(sha256sum "$VAULT/existing.md" | cut -d' ' -f1)" == "$BEFORE" ]]
@@ -35,6 +41,12 @@ bash "$HOME/.local/share/latticemind/uninstall.sh"
 [[ -f "$VAULT/existing.md" ]]
 [[ "$(sha256sum "$VAULT/existing.md" | cut -d' ' -f1)" == "$BEFORE" ]]
 grep -q 'description: old user skill' "$HOME/.gjc/skills/obsidian-save/SKILL.md"
+[[ ! -f "$HOME/.claude/commands/obsidian-save.md" ]]
+[[ ! -f "$VAULT/.opencode/commands/obsidian-save.md" ]]
+[[ ! -f "$VAULT/.gemini/commands/obsidian-save.md" ]]
+[[ ! -f "$VAULT/.pi/prompts/obsidian-save.md" ]]
+[[ ! -f "$HOME/.omp/agent/managed-skills/obsidian-save/SKILL.md" ]]
+[[ ! -f "$HOME/.hermes/skills/obsidian-second-brain/vault/obsidian-save/SKILL.md" ]]
 if grep -q 'LATTICEMIND:START' "$VAULT/AGENTS.md"; then
   printf 'managed AGENTS block survived uninstall\n' >&2
   exit 1

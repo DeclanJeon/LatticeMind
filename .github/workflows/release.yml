@@ -1,0 +1,96 @@
+name: Release every green push
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve release source
+        id: source
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=v0.2.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+
+      - name: Build all agent distributions
+        shell: bash
+        run: |
+          git clone --quiet --depth 1 https://github.com/eugeniughelbur/obsidian-second-brain.git upstream
+          bash upstream/scripts/build.sh
+
+      - name: Build preset scaffolds
+        shell: bash
+        run: |
+          for preset in default builder executive creator researcher; do
+            PRESET="$preset" python3 - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("upstream/scripts").resolve()))
+          import bootstrap_vault as bootstrap
+          preset = os.environ["PRESET"]
+          bootstrap.bootstrap(
+              Path("payload/scaffolds") / preset,
+              "Vault Owner",
+              preset,
+              "personal",
+              "",
+              [],
+              False,
+          )
+          PY
+          done
+
+      - name: Assemble release bundle
+        shell: bash
+        run: |
+          mkdir -p payload/dist payload/windows
+          cp -R upstream/dist/. payload/dist/
+          cp -R windows/. payload/windows/
+          printf '%s\n' '${{ steps.source.outputs.version }}' > payload/VERSION
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root = Path("payload")
+          with zipfile.ZipFile("latticemind-dist.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+              for path in root.rglob("*"):
+                  if path.is_file():
+                      archive.write(path, path.as_posix())
+          PY
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          gh release create '${{ steps.source.outputs.version }}' \
+            latticemind-dist.zip \
+            --repo '${{ github.repository }}' \
+            --target '${{ steps.source.outputs.sha }}' \
+            --title 'LatticeMind ${{ steps.source.outputs.version }}' \
+            --generate-notes \
+            --latest

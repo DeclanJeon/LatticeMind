@@ -2,3 +2,5 @@
 *.log
 .tmp/
 .gjc/
+__pycache__/
+*.pyc
