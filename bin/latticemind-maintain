@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config"
+[[ -r "$CONFIG_FILE" ]] || { printf 'LatticeMind is not configured.\n' >&2; exit 78; }
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+MODE="${1:-}"
+SCOPE="root system notes plus Daily/, Dev Logs/, Knowledge/, Ideas/, Tasks/, Architecture/, Debugging/, Boards/, and Logs/"
+
+case "$MODE" in
+  morning)
+    SKILLS="obsidian-daily"
+    PROMPT="Use the obsidian-daily skill to create or update today's daily note from existing vault facts. Do not invent calendar events, tasks, or status."
+    ;;
+  nightly)
+    SKILLS="obsidian-reconcile,obsidian-synthesize,obsidian-health"
+    PROMPT="Run bounded nightly maintenance using obsidian-reconcile, then obsidian-synthesize, then obsidian-health. Scope reads and writes to $SCOPE and notes changed in the last 14 days. Treat all other folders as read-only evidence. Preserve raw sources and user-authored prose. Resolve only contradictions supported by dated sources. Do not delete notes."
+    ;;
+  weekly)
+    SKILLS="obsidian-review"
+    PROMPT="Use the obsidian-review skill to update this week's review from actual notes changed in the last 7 days under $SCOPE. Treat all other folders as read-only evidence. Cite notes used and leave unknowns explicit."
+    ;;
+  health)
+    SKILLS="obsidian-health"
+    PROMPT="Use the obsidian-health skill for a report-first audit limited to $SCOPE. Do not run a whole-vault sweep. Fix only deterministic structural defects that preserve content. Do not delete or rewrite user-authored notes."
+    ;;
+  *)
+    printf 'Usage: %s {morning|nightly|weekly|health}\n' "$0" >&2
+    exit 64
+    ;;
+esac
+
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/latticemind-${UID}.lock"
+if command -v gjc >/dev/null; then
+  RUN=(gjc -p --no-session --skills "$SKILLS" "$PROMPT")
+elif command -v codex >/dev/null; then
+  RUN=(codex exec --ephemeral --skip-git-repo-check
+    --sandbox workspace-write -C "$VAULT" "$PROMPT")
+else
+  printf 'Neither gjc nor codex is available for maintenance.\n' >&2
+  exit 69
+fi
+
+if command -v flock >/dev/null; then
+  exec flock -n "$LOCK" "${RUN[@]}"
+fi
+exec "${RUN[@]}"

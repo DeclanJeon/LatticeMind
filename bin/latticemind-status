@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config"
+if [[ ! -r "$CONFIG_FILE" ]]; then
+  printf 'LatticeMind: not installed\n'
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+
+printf 'LatticeMind\n'
+printf '  Vault: %s\n' "$VAULT"
+[[ -d "$VAULT" ]] && printf '  Vault state: available\n' || printf '  Vault state: missing\n'
+
+python3 - "$VAULT" "$HOME" <<'PY'
+import sys
+from pathlib import Path
+vault, home = map(Path, sys.argv[1:])
+codex = list((vault / ".agents/skills").glob("*/SKILL.md"))
+gjc = list((home / ".gjc/skills").glob("*/SKILL.md"))
+print(f"  Codex skills: {len(codex)}")
+print(f"  GJC skills: {len(gjc)}")
+print(f"  Index: {'ready' if (vault / 'index.md').exists() else 'not generated yet'}")
+PY
+
+if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
+  active=0
+  for timer in morning nightly weekly health; do
+    if systemctl --user is-enabled --quiet "latticemind-$timer.timer"; then
+      active=$((active + 1))
+    fi
+  done
+  printf '  Timers: %s/4 enabled\n' "$active"
+else
+  printf '  Timers: unsupported\n'
+fi
