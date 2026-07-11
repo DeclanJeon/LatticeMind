@@ -1,61 +1,64 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config"
-[[ -r "$CONFIG_FILE" ]] || { printf 'LatticeMind is not configured.\n' >&2; exit 78; }
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
 MODE="${1:-}"
-SCOPE="root system notes plus Daily/, Dev Logs/, Knowledge/, Ideas/, Tasks/, Architecture/, Debugging/, Boards/, and Logs/"
-
+SLOT_STATE="${HOME}/.local/state/latticemind/slots.json"
+SCHEDULED_AT=""
+SLOT_ID=""
+GRANT=""
+shift || true
+while (($#)); do
+  case "$1" in
+    --slot-state|--scheduled-at|--slot-id|--grant)
+      [[ $# -ge 2 ]] || { printf 'Missing value for %s.\n' "$1" >&2; exit 64; }
+      case "$1" in
+        --slot-state) SLOT_STATE="$2" ;;
+        --scheduled-at) SCHEDULED_AT="$2" ;;
+        --slot-id) SLOT_ID="$2" ;;
+        --grant) GRANT="$2" ;;
+      esac
+      shift 2 ;;
+    *) printf 'Unknown scheduler argument: %s\n' "$1" >&2; exit 64 ;;
+  esac
+done
 case "$MODE" in
-  morning)
-    SKILLS="obsidian-daily"
-    PROMPT="Use the obsidian-daily skill to create or update today's daily note from existing vault facts. Do not invent calendar events, tasks, or status."
-    ;;
-  nightly)
-    SKILLS="obsidian-reconcile,obsidian-synthesize,obsidian-health"
-    PROMPT="Run bounded nightly maintenance using obsidian-reconcile, then obsidian-synthesize, then obsidian-health. Scope reads and writes to $SCOPE and notes changed in the last 14 days. Treat all other folders as read-only evidence. Preserve raw sources and user-authored prose. Resolve only contradictions supported by dated sources. Do not delete notes."
-    ;;
-  weekly)
-    SKILLS="obsidian-review"
-    PROMPT="Use the obsidian-review skill to update this week's review from actual notes changed in the last 7 days under $SCOPE. Treat all other folders as read-only evidence. Cite notes used and leave unknowns explicit."
-    ;;
-  freshness)
-    SKILLS="obsidian-research,obsidian-reconcile,obsidian-health"
-    PROMPT="Run a bounded external freshness audit for at most 20 notes under $SCOPE. This is separate from internal nightly consolidation. Select notes with external sources, date-sensitive factual claims, or existing freshness metadata, prioritizing never-verified and overdue notes. Use volatility TTLs high=7 days, medium=30, low=90, static=365; default to medium when uncertain. Re-check claims against current primary or official sources from outside the vault. A reachable URL alone is not verification: compare the factual claim with the source. If a source is unavailable or evidence is inconclusive, do not mark the claim verified; record it as blocked or needs-review. Update only claims directly supported by evidence, preserve user-authored prose and raw sources, and never delete notes. For reviewed notes maintain YAML fields last_verified (YYYY-MM-DD), volatility (high|medium|low|static), and verification_sources (list of URLs). Update Logs/LatticeMind Freshness.md in place with checked, changed, stale, blocked, and next-due sections, citing every source used."
-    ;;
-  health)
-    SKILLS="obsidian-health"
-    PROMPT="Use the obsidian-health skill for a report-first audit limited to $SCOPE. Do not run a whole-vault sweep. Fix only deterministic structural defects that preserve content. Do not delete or rewrite user-authored notes."
-    ;;
-  *)
-    printf 'Usage: %s {morning|nightly|weekly|freshness|health}\n' "$0" >&2
-    exit 64
-    ;;
+  freshness|health) [[ -z "$GRANT" ]] || { printf 'Observe-only mode rejects write grants.\n' >&2; exit 73; } ;;
+  morning|nightly|weekly)
+    [[ "$GRANT" == "scheduled-write:$MODE" ]] || { printf 'Write job requires an explicit scheduled-write grant: %s\n' "$MODE" >&2; exit 73; } ;;
+  *) printf 'Unknown maintenance mode.\n' >&2; exit 64 ;;
 esac
-
-LOCK="${XDG_RUNTIME_DIR:-/tmp}/latticemind-${UID}.lock"
-cd "$VAULT"
-if command -v gjc >/dev/null; then
-  RUN=(gjc -p --no-session --skills "$SKILLS" "$PROMPT")
-elif command -v omp >/dev/null; then
-  RUN=(omp -p --no-session --skills "$SKILLS" --approval-mode write "$PROMPT")
-elif command -v codex >/dev/null; then
-  RUN=(codex exec --ephemeral --skip-git-repo-check
-    --sandbox workspace-write -C "$VAULT" "$PROMPT")
-elif command -v claude >/dev/null; then
-  RUN=(claude -p --permission-mode acceptEdits "$PROMPT")
-elif command -v opencode >/dev/null; then
-  RUN=(opencode run --dir "$VAULT" "$PROMPT")
-elif command -v pi >/dev/null; then
-  RUN=(pi -p --no-session --approve "$PROMPT")
-else
-  printf 'No supported agent CLI is available for maintenance.\n' >&2
-  exit 69
-fi
-
-if command -v flock >/dev/null; then
-  exec flock -n "$LOCK" "${RUN[@]}"
-fi
-exec "${RUN[@]}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CORE_ROOT="$SCRIPT_DIR"
+[[ -d "$CORE_ROOT/latticemind_core" ]] || { printf 'Installed package root unavailable.\n' >&2; exit 69; }
+[[ -r "$CORE_ROOT/latticemind_core/cli.py" ]] || { printf 'Installed package entry point unavailable.\n' >&2; exit 69; }
+export LATTICEMIND_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config-v1.json"
+[[ -r "$LATTICEMIND_CONFIG" ]] || { printf 'Canonical config-v1.json is required.\n' >&2; exit 78; }
+mkdir -p "$(dirname "$SLOT_STATE")"
+exec env PYTHONPATH="$CORE_ROOT" python3 - "$CORE_ROOT" "$SLOT_STATE" "$MODE" "$SCHEDULED_AT" "$SLOT_ID" <<'PY'
+import fcntl
+import os, subprocess, sys
+from datetime import datetime, timezone
+from latticemind_core.jobs import get_job, run_persisted_slot, scheduled_occurrence, slot_identity
+_, package_root, slot_state, mode, scheduled_arg, slot_arg = sys.argv
+lock = open(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), f"latticemind-{os.getuid()}.lock"), "w")
+try:
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print("maintenance lock contention", file=sys.stderr)
+    raise SystemExit(75)
+if not os.path.isdir(package_root):
+    raise SystemExit("installed package root unavailable")
+job = get_job(mode)
+now = datetime.now(timezone.utc)
+scheduled = datetime.fromisoformat(scheduled_arg) if scheduled_arg else scheduled_occurrence(job, datetime.now().astimezone())
+if scheduled.tzinfo is None or scheduled.utcoffset() is None:
+    raise SystemExit("scheduled occurrence must include timezone offset")
+slot = slot_arg or slot_identity(job, scheduled.date())
+if slot != slot_identity(job, scheduled.date()):
+    raise SystemExit("slot id does not match scheduled occurrence")
+def execute():
+    command = ["freshness", "scan"] if job.mode == "freshness" else ["status"]
+    return subprocess.call([sys.executable, "-m", "latticemind_core.cli", *command])
+result = run_persisted_slot(slot_state, job, slot, execute, scheduled=scheduled, now=now)
+print(result)
+raise SystemExit({"succeeded": 0, "degraded": 2, "blocked": 69, "timed_out": 124, "expired": 0, "skipped": 0}.get(result, 78))
+PY

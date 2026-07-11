@@ -1,84 +1,75 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+PURGE=0; [[ "${1:-}" == "--purge-state" ]] && PURGE=1
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind"
-CONFIG_FILE="$CONFIG_DIR/config"
+CONFIG_FILE="$CONFIG_DIR/config-v1.json"
 [[ -r "$CONFIG_FILE" ]] || { printf 'LatticeMind is not installed.\n'; exit 0; }
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
-
-if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
-  systemctl --user disable --now \
-    latticemind-morning.timer latticemind-nightly.timer \
-    latticemind-weekly.timer latticemind-freshness.timer \
-    latticemind-health.timer >/dev/null 2>&1 || true
-  rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/"latticemind-{morning,nightly,weekly,freshness,health}.{service,timer}
-  systemctl --user daemon-reload
-fi
-
-python3 - "$VAULT" "$HOME" "$BACKUP_DIR" <<'PY'
-import json, shutil, sys
+python3 -I - "$CONFIG_FILE" "$PURGE" <<'PY'
+import json,sys,hashlib,os,subprocess,shutil
 from pathlib import Path
-vault, home, backup = map(Path, sys.argv[1:])
-
-def load(name):
-    path = backup / name
-    return json.loads(path.read_text()) if path.exists() else []
-
-for name in load("installed-codex.json"):
-    out = vault / ".agents/skills" / name
-    if out.exists():
-        shutil.rmtree(out)
-    old = backup / "codex-skills" / name
-    if old.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(old, out)
-
-for name in load("installed-gjc.json"):
-    out = home / ".gjc/skills" / name
-    if out.exists():
-        shutil.rmtree(out)
-    old = backup / "gjc-skills" / name
-    if old.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(old, out)
-
-for rel in load("installed-shared.json"):
-    out = vault / rel
-    old = backup / "vault" / rel
-    if old.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(old, out)
-    elif out.exists():
-        out.unlink()
-
-for record in reversed(load("installed-extra.json")):
-    out = Path(record["output"])
-    old = Path(record["backup"]) if record.get("backup") else None
-    if old and old.exists():
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(old, out)
-    elif out.exists():
-        out.unlink()
-
-for instruction_file in (vault / "AGENTS.md", vault / "GEMINI.md"):
-    if not instruction_file.exists():
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from latticemind_core.config import load_config
+cfg=load_config(sys.argv[1]); purge=sys.argv[2]=='1'; config=Path(sys.argv[1])
+data=Path(os.environ.get('LATTICEMIND_STATE_ROOT',Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))/'latticemind'))
+manifest=Path(cfg.get('manifest_path', data/'manifest-v1.json'))
+if not manifest.is_absolute(): manifest=data/manifest
+if not manifest.exists(): raise SystemExit('manifest-v1.json is required')
+records=json.loads(manifest.read_text(encoding="utf-8"))
+if not isinstance(records,dict) or records.get('schema')!='manifest-v1' or not isinstance(records.get('owned'),list): raise SystemExit('invalid manifest-v1')
+schedulers=[]
+for rec in records['owned']:
+    if not isinstance(rec,dict) or rec.get('owner') not in ('latticemind','latticemind-job-v1'): raise SystemExit('unowned manifest collision')
+    p=Path(rec.get('output',rec.get('path','')))
+    if not p.is_absolute(): raise SystemExit('invalid manifest path')
+    typ=rec.get('type',rec.get('kind','file'))
+    if typ=='scheduler': schedulers.append(rec); continue
+    if typ=='managed-block': continue
+    if typ=='symlink':
+        if p.exists() or p.is_symlink():
+            if not p.is_symlink() or os.readlink(p)!=rec.get('target'): raise SystemExit(f'unsafe owned symlink: {p}')
+    elif typ=='managed-block': continue
+    elif p.exists() and (p.is_symlink() or not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest().lower()!=str(rec.get('sha256','')).lower()):
+        raise SystemExit(f'modified owned path: {p}')
+for rec in schedulers:
+    p=Path(rec.get('output',rec.get('path','')))
+    if p.exists() and (not p.is_file() or p.is_symlink() or rec.get('marker') not in p.read_text(errors='ignore')): raise SystemExit(f'marker mismatch: {p}')
+for rec in records['owned']:
+    p=Path(rec.get('output',rec.get('path',''))); typ=rec.get('type',rec.get('kind','file'))
+    if typ=='scheduler': continue
+    if typ=='managed-block':
+        if p.exists():
+            text=p.read_text()
+            marker=rec.get('marker','<!-- LATTICEMIND:START -->')
+            start=marker
+            end=marker.replace('START','END')
+            if start not in text or end not in text: raise SystemExit(f'marker mismatch: {p}')
+            before, rest=text.split(start,1)
+            _, after=rest.split(end,1)
+            p.write_text(before.rstrip()+after.lstrip())
         continue
-    text = instruction_file.read_text()
-    start, end = "<!-- LATTICEMIND:START -->", "<!-- LATTICEMIND:END -->"
-    if start in text and end in text:
-        text = (
-            text[:text.index(start)].rstrip()
-            + "\n"
-            + text[text.index(end) + len(end):].lstrip("\n")
-        )
-        if text.strip() == "# Agent Instructions":
-            instruction_file.unlink()
-        else:
-            instruction_file.write_text(text)
+    if typ=='symlink':
+        if p.exists() or p.is_symlink(): p.unlink()
+    elif p.exists() and rec.get('created',not rec.get('backup')):
+        p.unlink()
+    elif p.exists() and rec.get('backup'):
+        b=Path(rec['backup'])
+        if not b.is_file() or rec.get('backup_sha256') != hashlib.sha256(b.read_bytes()).hexdigest(): raise SystemExit(f'invalid backup: {b}')
+        p.unlink(); p.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(b,p)
+for rec in schedulers:
+    p=Path(rec.get('output',rec.get('path','')))
+    if not p.exists(): continue
+    if rec.get('sha256') != hashlib.sha256(p.read_bytes()).hexdigest(): raise SystemExit(f'scheduler identity mismatch: {p}')
+    job=rec.get('job_id') or rec.get('identity',{}).get('job_id') or Path(p).stem
+    platform=rec.get('platform') or rec.get('identity',{}).get('platform')
+    if platform == 'systemd':
+        subprocess.run(['systemctl','--user','disable','--now',f'latticemind-{job}.timer'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    elif platform == 'launchd':
+        subprocess.run(['launchctl','bootout',f'gui/{os.getuid()}',str(p)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    p.unlink()
+if any((rec.get('platform') or rec.get('identity',{}).get('platform')) == 'systemd' for rec in schedulers):
+    subprocess.run(['systemctl','--user','daemon-reload'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+config.unlink(missing_ok=True)
+if purge and data.exists(): shutil.rmtree(data)
 PY
-
-rm -f "$HOME/.local/bin/latticemind-maintain" "$HOME/.local/bin/latticemind-status"
-rm -f "$CONFIG_FILE"
-printf 'LatticeMind integration removed. Vault notes and scaffold folders were preserved.\n'
-printf 'Recovery backup remains at: %s\n' "$BACKUP_DIR"
+printf 'LatticeMind integration removed; vault, backups, and state preserved by default.\n'
+[[ "$PURGE" -eq 1 ]] && printf 'State purged.\n'

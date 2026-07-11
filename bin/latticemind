@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Thin executable wrapper for the LatticeMind Python CLI."""
+from pathlib import Path
+import sys
+
+_script = Path(__file__).resolve()
+for _root in (_script.parent, _script.parent.parent):
+    if (_root / "latticemind_core").is_dir():
+        sys.path.insert(0, str(_root))
+        break
+else:
+    raise SystemExit("Signed latticemind_core package is missing")
+from latticemind_core.cli import main
+
+raise SystemExit(main())

@@ -1,48 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config"
-if [[ ! -r "$CONFIG_FILE" ]]; then
-  printf 'LatticeMind: not installed\n'
-  exit 1
-fi
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
-
-printf 'LatticeMind\n'
-printf '  Version: %s\n' "${VERSION:-unknown}"
-printf '  Vault: %s\n' "$VAULT"
-[[ -d "$VAULT" ]] && printf '  Vault state: available\n' || printf '  Vault state: missing\n'
-
-python3 - "$VAULT" "$HOME" <<'PY'
-import sys
-from pathlib import Path
-vault, home = map(Path, sys.argv[1:])
-counts = {
-    "Codex": len(list((vault / ".agents/skills").glob("*/SKILL.md"))),
-    "GJC": len(list((home / ".gjc/skills").glob("*/SKILL.md"))),
-    "Claude Code": len(list((home / ".claude/commands").glob("obsidian-*.md"))),
-    "OpenCode": len(list((vault / ".opencode/commands").glob("*.md"))),
-    "Gemini CLI": len(list((vault / ".gemini/commands").glob("*.md"))),
-    "Pi": len(list((vault / ".pi/prompts").glob("*.md"))),
-    "OMP": len(list((home / ".omp/agent/managed-skills").glob("*/SKILL.md"))),
-    "Hermes": len(list((home / ".hermes/skills/obsidian-second-brain").rglob("SKILL.md"))),
-}
-for name, count in counts.items():
-    print(f"  {name}: {count} resources")
-print(f"  Index: {'ready' if (vault / 'index.md').exists() else 'not generated yet'}")
-freshness = vault / "Logs" / "LatticeMind Freshness.md"
-print(f"  Freshness report: {'ready' if freshness.exists() else 'not run yet'}")
-PY
-
-if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
-  active=0
-  for timer in morning nightly weekly freshness health; do
-    if systemctl --user is-enabled --quiet "latticemind-$timer.timer"; then
-      active=$((active + 1))
-    fi
-  done
-  printf '  Timers: %s/5 enabled\n' "$active"
-else
-  printf '  Timers: unsupported\n'
-fi
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CORE_ROOT="$SCRIPT_DIR"
+[[ -d "$CORE_ROOT/latticemind_core" ]] || { printf 'Installed package root unavailable.\n' >&2; exit 69; }
+[[ -r "$CORE_ROOT/latticemind_core/cli.py" ]] || { printf 'Installed package entry point unavailable.\n' >&2; exit 69; }
+export LATTICEMIND_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind/config-v1.json"
+[[ -r "$LATTICEMIND_CONFIG" ]] || { printf 'Canonical config-v1.json is required.\n' >&2; exit 78; }
+exec env PYTHONPATH="$CORE_ROOT" python3 -m latticemind_core.cli status --json

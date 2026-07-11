@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CORE="$ROOT_DIR/latticemind_core/release.py"
+[[ -f "$CORE" ]] || { printf 'Pinned latticemind_core.release missing\n' >&2; exit 65; }
+export PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+case "${1:-}" in
+  verify-and-extract)
+    shift
+    manifest= signature= asset= output=
+    while (($#)); do
+      case "$1" in
+        --manifest) manifest=${2:?}; shift 2;;
+        --signature) signature=${2:?}; shift 2;;
+        --asset) asset=${2:?}; shift 2;;
+        --output) output=${2:?}; shift 2;;
+        --manifest-url|--asset-url) shift 2;;
+        *) printf 'unknown verifier option: %s\n' "$1" >&2; exit 64;;
+      esac
+    done
+    [[ -n "$manifest" && -n "$signature" && -n "$asset" && -n "$output" ]] || { printf 'manifest, signature, asset and output are required\n' >&2; exit 64; }
+    python3 - "$manifest" "$signature" "$asset" "$output" <<'PY'
+import json, sys, unicodedata, zipfile
+from pathlib import Path
+from latticemind_core.release import verify_manifest, validate_archive
+manifest, signature, asset, output = map(Path, sys.argv[1:])
+data = json.loads(manifest.read_text(encoding='utf-8'))
+verify_manifest(data, signature.read_bytes(), asset=asset)
+allowed = {"VERSION", "dist", "scaffolds", "windows", "latticemind", "bin", "schemas", "bootstrap", "scripts"}
+reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1,10)), *(f"LPT{i}" for i in range(1,10))}
+with zipfile.ZipFile(asset) as z:
+    keys = set()
+    for info in z.infolist():
+        name = info.filename
+        if not name or name.endswith("/"): continue
+        parts = name.split("/")
+        if len(parts) < 2 or parts[0] != "upstream" or parts[1] not in allowed:
+            raise ValueError("payload namespace violation")
+        for part in parts:
+            if "\\" in part or part in (".","..") or part.endswith((" ",".")) or part.split(".",1)[0].upper() in reserved:
+                raise ValueError("Windows-equivalent archive member")
+        key = unicodedata.normalize("NFC", name).casefold().rstrip(" .")
+        if key in keys: raise ValueError("archive member collision")
+        keys.add(key)
+validate_archive(asset, output, expected_names={"upstream"})
+print(json.dumps({'verified': True, 'version': data['version']}, sort_keys=True))
+PY
+    ;;
+  *) exec python3 -m latticemind_core.release "$@";;
+esac

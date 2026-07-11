@@ -4,116 +4,175 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-  workflow_dispatch:
-
-permissions:
-  contents: write
 
 concurrency:
   group: release-main
   cancel-in-progress: false
 
+env:
+  UPSTREAM_URL: https://github.com/eugeniughelbur/obsidian-second-brain.git
+  UPSTREAM_COMMIT: ${{ vars.LATTICEMIND_UPSTREAM_COMMIT }}
+  WINDOWS_X64_URL: https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+  WINDOWS_ARM64_URL: https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip
+
 jobs:
-  release:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
+  gates:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.gates.outputs.sha }}
     steps:
-      - name: Resolve release source
-        id: source
-        shell: bash
+      - name: Poll default native jobs to terminal success
+        id: gates
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
-          echo "version=v0.2.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ steps.source.outputs.sha }}
-          fetch-depth: 0
-
-      - name: Build all agent distributions
-        shell: bash
-        run: |
-          git clone --quiet --depth 1 https://github.com/eugeniughelbur/obsidian-second-brain.git upstream
-          bash upstream/scripts/build.sh
-
-      - name: Build preset scaffolds
-        shell: bash
-        run: |
-          for preset in default builder executive creator researcher; do
-            PRESET="$preset" python3 - <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-          sys.path.insert(0, str(Path("upstream/scripts").resolve()))
-          import bootstrap_vault as bootstrap
-          preset = os.environ["PRESET"]
-          bootstrap.bootstrap(
-              Path("payload/scaffolds") / preset,
-              "Vault Owner",
-              preset,
-              "personal",
-              "",
-              [],
-              False,
-          )
-          PY
+          sha='${{ github.event.workflow_run.head_sha }}'
+          for attempt in {1..30}; do
+            jobs=$(gh run view '${{ github.event.workflow_run.id }}' --repo '${{ github.repository }}' --json jobs --jq '[.jobs[] | select(.name | test("Ubuntu native E2E|macOS native E2E|Windows native E2E")) | {name, status, conclusion}]')
+            count=$(jq 'length' <<<"$jobs")
+            terminal=$(jq '[.[] | select(.status == "completed")] | length' <<<"$jobs")
+            failed=$(jq '[.[] | select(.status == "completed" and .conclusion != "success")] | length' <<<"$jobs")
+            if [[ "$count" -ge 3 && "$terminal" -eq "$count" ]]; then
+              [[ "$failed" -eq 0 ]] || { echo 'A native CI job failed.' >&2; exit 1; }
+              break
+            fi
+            sleep 10
           done
+          [[ "$count" -ge 3 && "$terminal" -eq "$count" && "$failed" -eq 0 ]] || { echo 'Native CI jobs did not reach success.' >&2; exit 1; }
+          current=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
+          [[ "$current" == "$sha" ]] || { echo 'main moved before release build.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Assemble release bundle
+  build-sign-verify:
+    needs: gates
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      previous: ${{ steps.version.outputs.previous }}
+      artifact_digest: ${{ steps.bundle.outputs.artifact-digest }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: ${{ needs.gates.outputs.sha }}
+          fetch-depth: 0
+      - name: Resolve monotonic release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh release list --repo '${{ github.repository }}' --limit 100 --json tagName --jq '[.[].tagName | select(startswith("v0.2.")) | ltrimstr("v0.2.") | tonumber] | max // 0')
+          echo "version=v0.2.$((latest + 1))" >> "$GITHUB_OUTPUT"
+          echo "previous=$(gh release list --repo '${{ github.repository }}' --limit 1 --json tagName --jq '.[0].tagName // empty')" >> "$GITHUB_OUTPUT"
+      - name: Fetch pinned upstream and runtimes
+        run: |
+          test -n "$UPSTREAM_COMMIT" && [[ "$UPSTREAM_COMMIT" =~ ^[0-9a-fA-F]{40,64}$ ]]
+          git clone --quiet "$UPSTREAM_URL" upstream
+          git -C upstream fetch --quiet --depth 1 origin "$UPSTREAM_COMMIT"
+          test "$(git -C upstream rev-parse "$UPSTREAM_COMMIT^{commit}")" = "$UPSTREAM_COMMIT"
+          git -C upstream checkout --quiet --detach "$UPSTREAM_COMMIT"
+          bash upstream/scripts/build.sh
+          mkdir -p release-runtimes
+          curl --fail --location --proto '=https' --tlsv1.2 "$WINDOWS_X64_URL" -o release-runtimes/windows-x64.zip
+          curl --fail --location --proto '=https' --tlsv1.2 "$WINDOWS_ARM64_URL" -o release-runtimes/windows-arm64.zip
+          echo '009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b  release-runtimes/windows-x64.zip' | sha256sum -c -
+          echo '1a6dae49d15320270a7141f93b574ff7686a7a526efa65e63ddbebf9b409929a  release-runtimes/windows-arm64.zip' | sha256sum -c -
+      - name: Install signing dependencies
+        run: python3 -m pip install --disable-pip-version-check 'cryptography==45.0.6' 'jsonschema==4.24.0'
+      - name: Build, sign, and verify deterministic release
+        env:
+          LATTICEMIND_SIGNING_KEY_B64: ${{ secrets.LATTICEMIND_SIGNING_KEY_B64 }}
+          LATTICEMIND_UPSTREAM_COMMIT: ${{ env.UPSTREAM_COMMIT }}
+        run: |
+          current=$(git ls-remote origin refs/heads/main | cut -f1); [[ "$current" == '${{ needs.gates.outputs.sha }}' ]] || exit 1
+          python3 scripts/build_release.py --output release --runtimes release-runtimes --upstream-dir upstream --version '${{ steps.version.outputs.version }}' --commit '${{ needs.gates.outputs.sha }}' --upstream-url "$UPSTREAM_URL" --upstream-commit "$UPSTREAM_COMMIT" --previous-version '${{ steps.version.outputs.previous }}'
+          PYTHONPATH=. python3 -m latticemind_core.release verify --manifest release/release-manifest-v1.json --signature release/release-manifest-v1.sig --asset release/latticemind-dist.zip --extract release/extracted
+          (cd release && sha256sum -c SHA256SUMS)
+          rm -rf release/extracted
+          mkdir -p candidate && tar -C release -czf candidate/release.tar.gz . && sha256sum candidate/release.tar.gz > candidate/release.tar.gz.sha256
+      - name: Upload one digest-bound release artifact
+        id: bundle
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: release-candidate-${{ needs.gates.outputs.sha }}
+          path: candidate/
+          if-no-files-found: error
+
+  native-validate:
+    needs: [gates, build-sign-verify]
+    strategy:
+      matrix: {os: [ubuntu-24.04, macos-14, windows-2022]}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-candidate-${{ needs.gates.outputs.sha }}
+          path: candidate
+      - name: Verify digest-bound signed artifact
         shell: bash
         run: |
-          mkdir -p payload/dist payload/windows
-          cp -R upstream/dist/. payload/dist/
-          cp -R windows/. payload/windows/
-          printf '%s\n' '${{ steps.source.outputs.version }}' > payload/VERSION
+          sha256sum -c candidate/release.tar.gz.sha256
+          mkdir extracted && tar -xzf candidate/release.tar.gz -C extracted
+          test -s extracted/release-manifest-v1.sig
+          test -s extracted/latticemind-dist.zip
+      - name: Exercise exact Unix release payload
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
           python3 - <<'PY'
-          from pathlib import Path
           import zipfile
-          root = Path("payload")
-          with zipfile.ZipFile("latticemind-dist.zip", "w", zipfile.ZIP_DEFLATED) as archive:
-              for path in root.rglob("*"):
-                  if path.is_file():
-                      archive.write(path, path.as_posix())
+          with zipfile.ZipFile("extracted/latticemind-dist.zip") as archive:
+              archive.extractall("payload")
           PY
-
-      - name: Compose release notes
-        shell: bash
+          set +e
+          python3 payload/upstream/bin/latticemind validate --json > candidate/native-validate.json
+          code=$?
+          set -e
+          test "$code" -eq 2
+          python3 -c 'import json; d=json.load(open("candidate/native-validate.json")); assert d["schema"]=="validate-v1"'
+          test -f payload/upstream/latticemind_core/cli.py
+      - name: Exercise exact Windows embedded-runtime payload
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          previous="$(gh release view --repo '${{ github.repository }}' --json tagName --jq .tagName 2>/dev/null || true)"
-          {
-            printf '## What changed\n\n'
-            if [[ -n "$previous" ]]; then
-              git log "${previous}..${{ steps.source.outputs.sha }}" --pretty='- %s (`%h`)'
-            else
-              git log -1 '${{ steps.source.outputs.sha }}' --pretty='- %s (`%h`)'
-            fi
-            printf '\n\n## Distribution\n\n'
-            printf '%s\n' \
-              '- Windows PowerShell installer with Task Scheduler support' \
-              '- Linux and macOS installer with systemd support' \
-              '- GJC, Codex, Claude Code, OpenCode, Gemini CLI, Pi, OMP, and Hermes adapters' \
-              '- Five non-destructive vault presets in `latticemind-dist.zip`'
-            if [[ -n "$previous" ]]; then
-              printf '\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/%s...${{ steps.source.outputs.version }}\n' "$previous"
-            fi
-          } > release-notes.md
+          Expand-Archive -LiteralPath extracted/latticemind-dist.zip -DestinationPath payload
+          New-Item -ItemType Directory -Force installed | Out-Null
+          Copy-Item payload/upstream/windows/* installed -Recurse -Force
+          Copy-Item payload/upstream/latticemind_core installed/latticemind_core -Recurse -Force
+          & powershell.exe -NoProfile -File installed/latticemind.ps1 validate --json |
+            Set-Content -LiteralPath candidate/native-validate.json -Encoding utf8
+          if ($LASTEXITCODE -ne 2) { throw "Expected degraded first-run validation exit 2; got $LASTEXITCODE" }
+          $result = Get-Content -LiteralPath candidate/native-validate.json -Raw | ConvertFrom-Json
+          if ($result.schema -ne 'validate-v1') { throw 'Embedded runtime validation schema mismatch.' }
+          if (-not (Test-Path -LiteralPath installed/python-x64/python.exe -PathType Leaf)) {
+            throw 'Exact embedded x64 runtime missing.'
+          }
 
-      - name: Publish GitHub Release
-        shell: bash
+  publish:
+    needs: [gates, build-sign-verify, native-validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-candidate-${{ needs.gates.outputs.sha }}
+          path: candidate
+      - name: Publish only verified artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create '${{ steps.source.outputs.version }}' \
-            latticemind-dist.zip \
-            --repo '${{ github.repository }}' \
-            --target '${{ steps.source.outputs.sha }}' \
-            --title 'LatticeMind ${{ steps.source.outputs.version }}' \
-            --notes-file release-notes.md \
-            --latest
+          sha256sum -c candidate/release.tar.gz.sha256
+          mkdir release && tar -xzf candidate/release.tar.gz -C release
+          current=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
+          [[ "$current" == '${{ needs.gates.outputs.sha }}' ]] || { echo 'main moved before publish.' >&2; exit 1; }
+          gh release create '${{ needs.build-sign-verify.outputs.version }}' release/latticemind-dist.zip release/release-manifest-v1.json release/release-manifest-v1.sig release/SHA256SUMS --repo '${{ github.repository }}' --target '${{ needs.gates.outputs.sha }}' --title 'LatticeMind ${{ needs.build-sign-verify.outputs.version }}' --generate-notes --latest

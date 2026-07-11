@@ -1,61 +1,72 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [ValidateSet('morning', 'nightly', 'weekly', 'freshness', 'health')]
-    [string]$Mode
+    [Parameter(Mandatory)] [ValidateSet('freshness','health','morning','nightly','weekly')] [string]$Mode,
+    [Parameter(Mandatory)] [string]$SlotState,
+    [string]$ScheduledAt = '',
+    [string]$SlotId = '',
+    [string]$Grant = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$StateRoot = Join-Path $env:LOCALAPPDATA 'LatticeMind'
-$Config = Get-Content (Join-Path $StateRoot 'config.json') -Raw | ConvertFrom-Json
-$Vault = $Config.vault
-$Scope = 'root system notes plus Daily/, Dev Logs/, Knowledge/, Ideas/, Tasks/, Architecture/, Debugging/, Boards/, and Logs/'
-
-switch ($Mode) {
-    'morning' {
-        $Skills = 'obsidian-daily'
-        $Prompt = "Use obsidian-daily to update today's note from known vault facts. Do not invent events, tasks, or status."
-    }
-    'nightly' {
-        $Skills = 'obsidian-reconcile,obsidian-synthesize,obsidian-health'
-        $Prompt = "Run bounded nightly maintenance on $Scope and notes changed in the last 14 days. Treat every other folder as read-only evidence. Preserve raw sources and prose. Never delete notes."
-    }
-    'weekly' {
-        $Skills = 'obsidian-review'
-        $Prompt = "Create this week's evidence-linked review from notes changed in the last seven days under $Scope. Leave unknowns explicit."
-    }
-    'freshness' {
-        $Skills = 'obsidian-research,obsidian-reconcile,obsidian-health'
-        $Prompt = "Run a bounded external freshness audit for at most 20 notes under $Scope. This is separate from internal nightly consolidation. Select notes with external sources, date-sensitive factual claims, or existing freshness metadata, prioritizing never-verified and overdue notes. Use volatility TTLs high=7 days, medium=30, low=90, static=365; default to medium when uncertain. Re-check claims against current primary or official sources outside the vault. A reachable URL alone is not verification: compare each factual claim with the source. If a source is unavailable or inconclusive, do not mark the claim verified; record blocked or needs-review. Update only supported claims, preserve user prose and raw sources, and never delete notes. Maintain YAML last_verified, volatility, and verification_sources for reviewed notes. Update Logs/LatticeMind Freshness.md in place with checked, changed, stale, blocked, and next-due sections and source citations."
-    }
-    'health' {
-        $Skills = 'obsidian-health'
-        $Prompt = "Run a report-first audit limited to $Scope. Fix only deterministic structural defects. Never delete or rewrite user-authored prose."
-    }
+$PayloadRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ArchValue = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITEW6432')
+if (-not $ArchValue) { $ArchValue = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE') }
+$Arch = switch ($ArchValue.ToUpperInvariant()) {
+    'AMD64' { 'x64' }
+    'X64' { 'x64' }
+    'ARM64' { 'arm64' }
+    default { exit 69 }
 }
-
+$Runtime = Join-Path (Join-Path $PayloadRoot "python-$Arch") 'python.exe'
+$PackageRoot = Join-Path $PayloadRoot 'latticemind_core'
+if (-not (Test-Path -LiteralPath $Runtime -PathType Leaf)) { exit 69 }
+if (-not (Test-Path -LiteralPath $PackageRoot -PathType Container)) { exit 69 }
+if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot 'cli.py') -PathType Leaf)) { exit 69 }
+if ([IO.Path]::GetFileName($PayloadRoot) -ne 'payload' -or [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($PayloadRoot)) -ne 'current') { exit 69 }
+$Config = Join-Path (Split-Path -Parent (Split-Path -Parent $PayloadRoot)) 'config-v1.json'
+if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { throw 'Canonical config-v1.json is required.' }
+if ($Mode -in @('freshness','health')) {
+    if ($Grant) { Write-Error 'Observe-only mode rejects write grants.'; exit 73 }
+} elseif ($Grant -ne "scheduled-write:$Mode") {
+    Write-Error "Write job requires an explicit scheduled-write grant: $Mode"
+    exit 73
+}
+$env:LATTICEMIND_CONFIG = $Config
 $Mutex = [System.Threading.Mutex]::new($false, 'Local\LatticeMindMaintenance')
-if (-not $Mutex.WaitOne(0)) { exit 75 }
+$Acquired = $false
 try {
-    Push-Location $Vault
-    if (Get-Command gjc -ErrorAction SilentlyContinue) {
-        & gjc -p --no-session --skills $Skills $Prompt
-    } elseif (Get-Command omp -ErrorAction SilentlyContinue) {
-        & omp -p --no-session --skills $Skills --approval-mode write $Prompt
-    } elseif (Get-Command codex -ErrorAction SilentlyContinue) {
-        & codex exec --ephemeral --skip-git-repo-check --sandbox workspace-write -C $Vault $Prompt
-    } elseif (Get-Command claude -ErrorAction SilentlyContinue) {
-        & claude -p --permission-mode acceptEdits $Prompt
-    } elseif (Get-Command opencode -ErrorAction SilentlyContinue) {
-        & opencode run --dir $Vault $Prompt
-    } elseif (Get-Command pi -ErrorAction SilentlyContinue) {
-        & pi -p --no-session --approve $Prompt
-    } else {
-        throw 'No supported agent CLI is available.'
-    }
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $Acquired = $Mutex.WaitOne(0)
+    if (-not $Acquired) { Write-Error 'maintenance lock contention'; exit 75 }
+    $Bootstrap = @'
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+package_root, slot_state, mode, scheduled_arg, slot_arg = sys.argv[1:]
+sys.path.insert(0, package_root)
+from latticemind_core.jobs import get_job, run_persisted_slot, scheduled_occurrence, slot_identity
+
+job = get_job(mode)
+scheduled = datetime.fromisoformat(scheduled_arg) if scheduled_arg else scheduled_occurrence(job, datetime.now().astimezone())
+if scheduled.tzinfo is None or scheduled.utcoffset() is None:
+    raise SystemExit("scheduled occurrence must include timezone offset")
+slot = slot_arg or slot_identity(job, scheduled.date())
+if slot != slot_identity(job, scheduled.date()):
+    raise SystemExit("slot id does not match scheduled occurrence")
+command = ["freshness", "scan"] if job.mode == "freshness" else ["status"]
+result = run_persisted_slot(
+    slot_state,
+    job,
+    slot,
+    lambda: subprocess.call([sys.executable, "-m", "latticemind_core.cli", *command]),
+    scheduled=scheduled,
+    now=datetime.now(timezone.utc),
+)
+print(result)
+raise SystemExit({"succeeded": 0, "degraded": 2, "blocked": 69, "timed_out": 124, "expired": 0, "skipped": 0}.get(result, 78))
+'@
+    & $Runtime -c $Bootstrap $PackageRoot $SlotState $Mode $ScheduledAt $SlotId
+    exit $LASTEXITCODE
 } finally {
-    Pop-Location
-    $Mutex.ReleaseMutex()
+    if ($Acquired) { $Mutex.ReleaseMutex() }
     $Mutex.Dispose()
 }

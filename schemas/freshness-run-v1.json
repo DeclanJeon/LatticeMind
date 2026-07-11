@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "freshness-run-v1",
+  "type": "object",
+  "required": ["schema", "status", "vault_manifest", "candidates", "evidence", "candidate_cap"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "freshness-run-v1"},
+    "status": {"enum": ["succeeded", "blocked", "failed"]},
+    "vault_manifest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "id", "type", "mode", "reparse_tag"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "minLength": 1, "pattern": "^[^\\\\]+$"},
+          "id": {"type": "string", "minLength": 1, "pattern": "^[^\\\\]+$"},
+          "type": {"enum": ["file", "directory"]},
+          "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+          "reparse_tag": {"type": "integer", "minimum": 0},
+          "size": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "hardlink_identity": {"type": "string", "minLength": 1},
+          "hardlink_count": {"type": "integer", "minimum": 1}
+        },
+        "allOf": [
+          {"if": {"properties": {"type": {"const": "file"}}}, "then": {"required": ["size", "sha256", "hardlink_identity", "hardlink_count"]}},
+          {"if": {"properties": {"type": {"const": "directory"}}}, "then": {"not": {"anyOf": [{"required": ["size"]}, {"required": ["sha256"]}, {"required": ["hardlink_identity"]}, {"required": ["hardlink_count"]}]}}}
+        ]
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["path", "id", "volatility", "ttl_days", "last_verified"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "id": {"type": "string", "minLength": 1},
+          "volatility": {"enum": ["high", "medium", "low", "static"]},
+          "ttl_days": {"type": "integer", "minimum": 1, "maximum": 365},
+          "last_verified": {"type": ["string", "null"], "format": "date"}
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema", "url", "reachable", "supports", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "schema": {"const": "freshness-evidence-v1"},
+          "url": {"type": "string", "format": "uri", "minLength": 1},
+          "reachable": {"type": "boolean"},
+          "supports": {"type": "boolean"},
+          "note": {"type": "string", "minLength": 1},
+          "outcome": {"enum": ["supported", "needs-review"]}
+        }
+      }
+    },
+    "candidate_cap": {"const": 20},
+    "work_packet_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "report_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

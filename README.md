@@ -1,233 +1,241 @@
 <p align="center">
-  <img src="assets/latticemind-banner.svg" alt="LatticeMind — the living knowledge layer" width="100%" />
+  <img src="assets/latticemind-banner.svg" alt="LatticeMind — the local knowledge layer" width="100%" />
 </p>
 
 <p align="center">
   <a href="https://github.com/DeclanJeon/LatticeMind/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/DeclanJeon/LatticeMind/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
+  <a href="https://github.com/DeclanJeon/LatticeMind/releases"><img src="https://img.shields.io/github/v/release/DeclanJeon/LatticeMind?style=flat-square&color=22d3ee" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22d3ee?style=flat-square" alt="MIT License" /></a>
-  <a href="https://github.com/eugeniughelbur/obsidian-second-brain"><img src="https://img.shields.io/badge/powered%20by-obsidian--second--brain-8b5cf6?style=flat-square" alt="Powered by obsidian-second-brain" /></a>
-  <a href="https://github.com/DeclanJeon/LatticeMind/releases/latest"><img src="https://img.shields.io/github/v/release/DeclanJeon/LatticeMind?style=flat-square&color=22d3ee" alt="Latest release" /></a>
-  <img src="https://img.shields.io/badge/notes-local%20first-111827?style=flat-square" alt="Local-first notes" />
+  <img src="https://img.shields.io/badge/local--first-notes-111827?style=flat-square" alt="Local-first notes" />
 </p>
 
-<p align="center">
-  <strong>Turn an existing Obsidian vault into durable memory for AI coding agents — safely, in one install.</strong>
-</p>
+<p align="center"><strong>Install a cautious, local knowledge layer for AI coding agents.</strong></p>
 
-LatticeMind is an opinionated installer and safety layer around
-[obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain),
-inspired by [Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
-It connects one local Markdown vault to **GJC, Codex, Claude Code, OpenCode,
-Gemini CLI, Pi, OMP, and Hermes**, adds AI-first note rules, and schedules
-bounded maintenance without turning an existing vault into an uncontrolled
-rewrite experiment. Linux, macOS, and Windows are supported.
+LatticeMind connects an existing Markdown/Obsidian vault to a small, explicit
+maintenance control plane. It preserves source material, records evidence, and
+fails closed when an agent or release cannot be trusted. It does not replace
+Obsidian or your agent CLI.
 
-## One-line install
+## Install
+
+The supported install path is one command on Unix or Windows. Release payloads
+are accepted only when the signed manifest, signature, and archive pass the
+pinned trust check; an unsigned or tampered release is rejected.
+The piped entry scripts fetch only the pinned verifier and bootstrap support from
+the repository. After verification, every installed lifecycle, runtime, and
+control-plane byte is copied from the signed extracted `upstream/` payload;
+download failures or missing payload members abort the install.
+
+Unix (Linux and macOS):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.sh | \
-  bash -s -- --vault "$HOME/Documents/Obsidian Vault" --name "Your Name" --preset builder
+  bash -s -- --vault "$HOME/Documents/Obsidian Vault" --name "Your Name"
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.ps1 |
-  iex
+irm https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.ps1 | iex
 ```
 
-To select a vault, preset, or agent subset:
+Use `--preset`, `--agents`, and `--no-schedule` on Unix, or `-Preset`,
+`-Agents`, and `-NoSchedule` on Windows. For a security-sensitive install,
+clone the repository, review the installer, and run `bash scripts/install-local.sh`
+(or the local PowerShell installer) instead of piping a remote script.
 
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/DeclanJeon/LatticeMind/main/install.ps1))) `
-  -Vault "$HOME\Documents\My Vault" -Preset builder `
-  -Agents codex,claude,opencode,omp
-```
+## First run
 
-The default vault is `~/Documents/Obsidian Vault` when it exists, otherwise
-`~/Obsidian/LatticeMind`. For security-sensitive environments, clone the repo,
-review `install.sh`, and run it locally.
+The first checks are deliberately read-only:
 
 ```bash
-git clone https://github.com/DeclanJeon/LatticeMind.git
-cd LatticeMind
-bash scripts/install-local.sh --vault /path/to/vault --name "Your Name"
+latticemind validate
+latticemind status --json
 ```
 
-## What one install wires together
+`validate` checks the command contract. `status` reports trust, vault access,
+backend capabilities, desired/effective jobs, and an exit class. A newly staged
+or unverified installation is `degraded`/`blocked`, not silently operational.
+The normal default is the **observe** permission profile: scheduled jobs can
+read evidence and write reports only where their explicit job contract allows.
+On Windows, the public CLI entry point is the signed embedded-runtime wrapper:
+`powershell -File "$env:LOCALAPPDATA\LatticeMind\current\payload\latticemind.ps1"`.
+Pass the same lifecycle commands (`validate`, `status`, `freshness`, `schedule`,
+`update`, `rollback`, and `migrate`) to this wrapper; it never falls back to
+PATH Python.
 
-```text
-                            local Markdown vault
-                       /            |             \
-                portable skills  AI-first rules  scheduled care
-              /   /   /   /   \       |         /   |   |   \
-           GJC OMP Codex Claude OpenCode ...   AM night week fresh health
-```
+## What is installed
 
-| Layer | Installed behavior |
-|---|---|
-| Vault | Builder-ready folders, templates, Bases, dashboard, operating manual |
-| Knowledge | Source-preserving notes, dated claims, confidence labels, wikilinks |
-| Agent layer | GJC · Codex · Claude Code · OpenCode · Gemini CLI · Pi · OMP · Hermes |
-| Automation | Morning note, nightly consolidation, weekly review, external freshness audit, health audit |
-| Recovery | Timestamped backups and a content-preserving uninstaller |
+- A vault scaffold, templates, Bases, dashboard, and operating guidance.
+- Native integrations for **GJC, OMP, Codex, Claude Code, OpenCode, Pi,
+  Gemini CLI, and Hermes** (selected with `--agents`).
+- A signed release manifest and an ownership/backup manifest for integration
+  files.
+- Five deterministic job definitions. Only these two report jobs are enabled
+  by default:
 
-Representative skills:
-
-```text
-obsidian-save        extract durable decisions and tasks from a session
-obsidian-ingest      absorb a URL, document, image, transcript, or source
-obsidian-find        search the vault with context
-obsidian-architect   maintain codebase architecture notes
-obsidian-reconcile   surface and resolve evidence-backed contradictions
-obsidian-synthesize  discover patterns across linked notes
-obsidian-health      audit structure without destructive cleanup
-```
-
-Invocation follows each agent's native model:
-
-```text
-GJC / OMP       /skill:obsidian-save
-Codex           $obsidian-save
-Claude Code     /obsidian-save
-OpenCode        run the obsidian-save command or describe the task
-Gemini CLI      /obsidian-save
-Pi              /obsidian-save
-Hermes          browse/install the obsidian-save native skill
-```
-
-## Safety model
-
-Most second-brain demos assume an empty vault. Real vaults are not empty.
-LatticeMind therefore makes these choices by default:
-
-1. **Existing files win.** Scaffold files are copied only when the destination
-   does not already exist.
-2. **Skill collisions are backed up.** Replaced agent skills and command files
-   are copied to a timestamped, file-level recovery directory.
-3. **Raw evidence remains immutable.** Maintenance prompts preserve source
-   material and user-authored prose.
-4. **Automation has a narrow write scope.** Scheduled jobs operate on root
-   system notes and dedicated managed folders, treating everything else as
-   read-only evidence.
-5. **No autonomous deletion.** Nightly and health jobs may report uncertainty;
-   they do not delete notes.
-6. **Uninstall preserves knowledge.** Vault notes and scaffold folders remain;
-   only integration files are removed or restored from backup.
-
-Nightly consolidation keeps the vault internally coherent. The separate freshness
-loop checks whether date-sensitive claims still match current primary sources.
-Reviewed notes use `last_verified`, `volatility`, and `verification_sources`;
-unavailable or inconclusive sources are reported rather than silently accepted.
-
-## Scheduled maintenance
-
-On Linux, systemd user timers are installed. On Windows, equivalent Task
-Scheduler jobs are registered:
-
-| Timer | Default time | Purpose |
+| Job | Default | Permission and purpose |
 |---|---:|---|
-| Morning | 08:07 | Create or update today's note from known facts |
-| Nightly | 22:17 | Reconcile, synthesize, and inspect recent managed notes |
-| Weekly | Friday 18:17 | Build an evidence-linked weekly review |
-| Freshness | Sunday 19:17 | Revalidate up to 20 overdue claims against current primary sources |
-| Health | Sunday 21:17 | Run a report-first structural audit |
+| `freshness` | enabled | Observe current primary sources and report overdue claims |
+| `health` | enabled | Observe structure and report health findings |
+| `morning` | disabled | Optional scheduled write: create/update the daily note |
+| `nightly` | disabled | Optional scheduled write: reconcile managed notes |
+| `weekly` | disabled | Optional scheduled write: build a weekly review |
 
-GJC is preferred as the unattended backend, followed by OMP, Codex, Claude
-Code, OpenCode, and Pi. Disable automation with `--no-schedule` on Unix or
-`-NoSchedule` on Windows.
+Freshness is bounded to overdue claims and prepares at most 20 candidates for
+revalidation against current primary sources. Volatility TTLs are 7/30/90/365
+days (`high`/`medium`/`low`/`static`). URL availability is not factual
+verification; unavailable or inconclusive sources remain reported for review.
 
-Run the external check manually with `latticemind-maintain freshness`. Volatility
-TTLs are `high=7`, `medium=30`, `low=90`, and `static=365` days. The audit updates
-`Logs/LatticeMind Freshness.md` in place and never treats URL availability alone
-as factual verification.
+## Permission profiles
 
-## Installer options
+Profiles are explicit and never grant deletion:
 
-```text
---vault PATH          Obsidian vault path
---name NAME           Vault owner name
---preset PRESET       default|builder|executive|creator|researcher
---agents LIST         all or gjc,codex,claude,opencode,gemini,pi,omp,hermes
---no-gjc              Skip global GJC skills
---no-codex            Skip Codex vault skills
---no-schedule         Skip systemd user timers
-```
+| Profile | Read vault | Metadata write | Create | Delete | Managed write |
+|---|---:|---:|---:|---:|---:|
+| `observe` | yes | no | no | no | no |
+| `safe-write` | yes | no | yes | no | no |
+| `managed-write` | yes | yes | yes | no | yes |
+| `full` | yes | yes | yes | no | yes |
 
-Check the installation:
+Scheduled jobs require `observe`; write-capable profiles are for explicit,
+interactive workflows. Agent execution is also observe-only: every backend is
+blocked unless its exact installed version has a verified observe contract.
+No version is treated as verified merely because the executable is present.
+Installers accept an explicit `--profile` (Unix) or `-Profile` (Windows);
+the default is `observe` and the selected value is persisted in `config-v1.json`.
+Non-`observe` profiles are interactive-only: installers never schedule write
+jobs (and observe scheduling remains limited to the freshness and health report
+jobs). Unix-created LatticeMind state, config, transaction, manifest, backup,
+and installed executable directories/files use `umask 077` (directories 0700,
+files 0600 unless executable). Shared integration parent directories are merged
+per product-owned child output and unrelated user content is preserved with
+backups.
+
+## Scheduling
+
+The installer renders native user-level jobs, with ownership markers and a
+15-minute execution limit:
+
+- Linux: systemd user timers (`~/.config/systemd/user`).
+- macOS: launchd agents (`~/Library/LaunchAgents`).
+- Windows: Task Scheduler tasks under `\\LatticeMind\\` at least privilege.
+
+Schedules use local time, one run per slot, bounded catch-up, and no overlapping
+runs. Unix scheduling can be skipped with `--no-schedule`; Windows with
+`-NoSchedule`. Inspect definitions with:
 
 ```bash
-~/.local/bin/latticemind-status
-systemctl --user list-timers 'latticemind-*' --all
+latticemind schedule status
+latticemind schedule render --platform systemd --job freshness
 ```
 
-Remove the integration without deleting notes:
+Run a report manually with `latticemind freshness scan --vault /path/to/vault`.
+On Windows, use the installed wrapper for the same lifecycle operations:
+`powershell -File "$env:LOCALAPPDATA\LatticeMind\current\payload\latticemind.ps1" schedule status`.
+
+## Files and paths
+
+| Purpose | Unix default | Windows default |
+|---|---|---|
+| Config | `${XDG_CONFIG_HOME:-~/.config}/latticemind/config-v1.json` | `%LOCALAPPDATA%\\LatticeMind\\config-v1.json` |
+| State, versions, snapshots, logs | `${XDG_DATA_HOME:-~/.local/share}/latticemind` | `%LOCALAPPDATA%\\LatticeMind` |
+| Vault | installer selection (fallback `~/Obsidian`) | installer selection |
+| User command/status | `~/.local/bin/latticemind` | `latticemind.ps1` under `%LOCALAPPDATA%\\LatticeMind\\current\\payload` |
+
+`LATTICEMIND_CONFIG`, `LATTICEMIND_STATE_ROOT`, and `LATTICEMIND_VAULT` can
+select Unix locations. Configuration is strict `config-v1` JSON; paths with
+traversal or unknown fields are rejected.
+
+## Updates, rollback, and uninstall
+
+Lifecycle operations require a signed manifest and matching archive. `update
+--check` verifies trust and reports whether a newer version is available;
+`update --apply` stages the archive, snapshots owned components, migrates
+configuration, reinstalls owned jobs, validates the lifecycle, and switches the
+current pointer atomically. `rollback` accepts only authenticated trusted
+snapshot state and a compatible signed version. These operations fail closed on
+missing signatures, mismatched versions, altered snapshots, or untrusted
+destinations.
+
+Remove the integration and restore owned files from their verified backups:
 
 ```bash
 bash ~/.local/share/latticemind/uninstall.sh
+# Add --purge-state only when the release state and snapshots should also go.
 ```
+
+On Windows:
 
 ```powershell
-powershell -File "$env:LOCALAPPDATA\LatticeMind\current\uninstall.ps1"
+powershell -File "$env:LOCALAPPDATA\LatticeMind\current\payload\uninstall.ps1"
 ```
 
-## Requirements
+Uninstall does not delete vault notes or backups by default. It refuses to
+remove an owned file whose bytes or ownership marker changed unexpectedly.
 
-- Linux, macOS, or Windows 10/11
-- Unix: Bash, Git, and Python 3
-- Windows: PowerShell 5.1+; release bundles require no Bash build step
-- An existing or new Obsidian vault
-- At least one supported agent CLI
-- systemd user services or Windows Task Scheduler for optional maintenance
+## Supported agents and limitations
 
-External freshness audits require the selected agent to have web or provider
-access. Without it, claims remain blocked or `needs-review`; they are not marked
-verified. Core vault commands do not require extra research API keys.
+The eight declared backends are GJC, OMP, Codex, Claude Code, OpenCode, Pi,
+Gemini CLI, and Hermes. They are not interchangeable: each has an explicit
+read-only argv contract, environment allowlist, output schema, and optional
+network-research flag. The current safe default is blocked until a backend
+version is explicitly verified. Network research is provider-dependent and
+requires the selected agent's own access; LatticeMind does not supply API keys.
 
-## Architecture
+LatticeMind cannot prove that an external source is true, prevent a user from
+changing a vault outside its ownership manifest, or make an unverified agent
+safe. It reports uncertainty instead of guessing. Existing files win during
+installation; collisions are backed up before replacement, and scheduled
+maintenance does not autonomously delete notes.
 
-LatticeMind deliberately does not fork the knowledge engine. At install time it:
+## Troubleshooting and exit codes
 
-1. fetches the selected upstream `obsidian-second-brain` revision;
-2. builds all native upstream distributions;
-3. stages the chosen vault preset in a temporary directory;
-4. merges only missing scaffold files into the target vault;
-5. installs agent-specific resources with file-level backups;
-6. adapts portable skills to GJC and OMP discovery;
-7. installs bounded maintenance through systemd or Windows Task Scheduler.
+Start with `latticemind validate` and `latticemind status --json`. A `blocked`
+or `degraded` result is a safety signal, not a successful run. Check the
+reported `message`, `trust`, `backend`, `jobs`, and `log` fields; inspect the
+native scheduler and confirm the vault path is readable. Common classes are:
 
-This keeps the installer small, auditable, and aligned with upstream improvements.
-Set `LATTICEMIND_UPSTREAM_REF` to pin a release or commit.
+| Code | Meaning |
+|---:|---|
+| 0 | OK |
+| 2 | degraded status |
+| 3 | disabled profile |
+| 65 | corrupt/invalid input |
+| 69 | runtime unavailable or blocked backend |
+| 73 | permission denied |
+| 74 | I/O failure |
+| 75 | lock already held |
+| 76 | release trust/signature failure |
+| 77 | security policy blocked the operation |
+| 78 | migration or operation failure |
+| 124 | timed out |
 
-## Versioning and Releases
+Do not bypass signature verification or run an unknown backend with write
+permissions to work around a failure.
 
-Every green push to `main` produces a new `v0.2.<run>` GitHub Release. Release
-notes are generated from the commits since the previous version, and each
-release carries `latticemind-dist.zip`: prebuilt agent distributions, all five
-vault presets, and the Windows runtime. The PowerShell installer always consumes
-the latest successful release rather than rebuilding Unix shell adapters.
+## Contributing and release readiness
 
-## Development
+Contributors should verify their change with the repository's documented
+syntax, compile, lint, and smoke checks, and inspect `validate`/`status` output
+for a clean isolated install. Native Unix, macOS, and Windows paths must be
+covered before claiming cross-platform support.
 
-```bash
-bash -n install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
-python3 -m py_compile scripts/*.py
-shellcheck install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
-bash tests/install-smoke.sh
-```
+Production releases are intentionally not reproducible from a public checkout:
+publishing requires the repository's signing secret and successful native Linux,
+macOS, and Windows CI. The release workflow publishes only after those gates
+and attaches the signed manifest, signature, and archive. Do not claim a
+production release without both the secret-backed signing step and native CI.
+Windows release bundles include official Python 3.11.9 embedded x64 and ARM64
+packages. CI executes the x64 package on its Windows x64 runner and verifies
+the ARM64 package's identity and selection; it does not claim ARM64 execution
+because that runner cannot execute ARM64 binaries.
 
-The smoke test creates an isolated home directory and vault, verifies existing
-content hashes, installs every agent integration, runs status checks, uninstalls,
-and confirms the original skill and note content are restored.
+## Credits and license
 
-## Credits
-
-The core commands, schemas, and vault engine come from
-[eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)
-under the MIT License. LatticeMind contributes cross-agent installation,
-Windows support, non-destructive merging, GJC/OMP adaptation, recovery
-manifests, automatic releases, and bounded scheduled maintenance.
-
-## License
+The knowledge engine and schemas are from
+[obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain),
+under MIT. LatticeMind adds cross-agent installation, signed lifecycle
+management, native scheduling, migration, and bounded reports.
 
 MIT © 2026 DeclanJeon. See [LICENSE](LICENSE).

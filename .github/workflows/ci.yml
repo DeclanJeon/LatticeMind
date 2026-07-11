@@ -7,34 +7,133 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUNBUFFERED: '1'
+
 jobs:
-  shell:
-    runs-on: ubuntu-latest
+  ubuntu-native:
+    name: Ubuntu native E2E
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Check shell syntax
-        run: bash -n install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
-      - name: Check Python helpers
-        run: python3 -m py_compile scripts/*.py
-      - name: Check PowerShell syntax
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Provision user D-Bus and systemd
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck dbus-user-session
+      - name: Run tests and native scheduler smoke
+        env:
+          LATTICEMIND_NATIVE_E2E: '1'
+          LATTICEMIND_EVIDENCE_DIR: evidence/ubuntu
+        run: |
+          mkdir -p evidence/ubuntu
+          python3 -m unittest tests.unit.test_core_contracts tests.unit.test_freshness tests.unit.test_security tests.unit.test_jobs tests.unit.test_migrate tests.unit.test_update tests.unit.test_release_build tests.integration.test_cli tests.e2e.test_platform_rendering
+          dbus-run-session -- python3 tests/e2e/native_smoke.py
+          dbus-run-session -- python3 -m unittest tests.e2e.test_native_contracts
+      - name: Shell and Python syntax
+        run: |
+          bash -n install.sh uninstall.sh bin/latticemind-maintain bin/latticemind-status scripts/install-local.sh scripts/install-systemd.sh scripts/install-launchd.sh scripts/latticemind-verify tests/install-smoke.sh
+          python3 -m py_compile latticemind_core/*.py scripts/*.py tests/e2e/*.py
+          shellcheck install.sh uninstall.sh bin/latticemind-maintain bin/latticemind-status scripts/install-local.sh scripts/install-systemd.sh scripts/install-launchd.sh scripts/latticemind-verify tests/install-smoke.sh
+      - name: Upload sanitized Ubuntu evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-ubuntu
+          path: evidence/ubuntu/
+          if-no-files-found: error
+
+  macos-native:
+    name: macOS native E2E
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Run native scheduler smoke and contracts
+        env:
+          LATTICEMIND_NATIVE_E2E: '1'
+          LATTICEMIND_EVIDENCE_DIR: evidence/macos
+        run: |
+          mkdir -p evidence/macos
+          python3 tests/e2e/native_smoke.py
+          python3 -m unittest tests.e2e.test_native_contracts tests.e2e.test_platform_rendering
+      - name: Upload sanitized macOS evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-macos
+          path: evidence/macos/
+          if-no-files-found: error
+
+  windows-native:
+    name: Windows native E2E
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Download exact embedded Python 3.11.9 x64 runtime
         shell: pwsh
         run: |
-          Get-ChildItem install.ps1, windows/*.ps1 | ForEach-Object {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              $_.FullName,
-              [ref]$tokens,
-              [ref]$errors
-            ) | Out-Null
-            if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error $_ }
-              exit 1
-            }
+          New-Item -ItemType Directory -Force runtime/python-x64 | Out-Null
+          Invoke-WebRequest -Uri https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip -OutFile runtime/python-x64/python.zip
+          if ((Get-FileHash runtime/python-x64/python.zip -Algorithm SHA256).Hash.ToLower() -ne '009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b') { throw 'x64 runtime hash mismatch' }
+          Expand-Archive runtime/python-x64/python.zip runtime/python-x64 -Force
+          Remove-Item runtime/python-x64/python.zip
+      - name: Run Windows native scheduler with embedded runtime
+        shell: pwsh
+        env:
+          LATTICEMIND_NATIVE_E2E: '1'
+        run: |
+          New-Item -ItemType Directory -Force evidence/windows | Out-Null
+          $state = Join-Path $env:LOCALAPPDATA 'LatticeMind'
+          $root = Join-Path (Join-Path $state 'current') 'payload'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          Copy-Item windows/*.ps1 $root -Force
+          Copy-Item latticemind_core $root -Recurse -Force
+          Copy-Item runtime/python-x64 $root -Recurse -Force
+          $vault = Join-Path $state 'vault'
+          New-Item -ItemType Directory -Force $vault | Out-Null
+          @{schema='config-v1'; vault_path=$vault; profile='observe'; enabled_jobs=@(); install_id='ci-native-install'; install_version='ci'; schema_versions=@{bootstrap=1;config=1;state=1}} | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $state 'config-v1.json')
+          & pwsh -NoProfile -File windows/register-tasks.ps1 -InstallRoot $root
+          $tasks = @(Get-ScheduledTask -TaskPath '\LatticeMind\' | Where-Object TaskName -in freshness,health)
+          if ($tasks.Count -ne 2) { throw 'Expected two observe tasks.' }
+          $results = @()
+          foreach ($task in $tasks) {
+            Start-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName
+            $deadline = (Get-Date).AddSeconds(60)
+            do {
+              Start-Sleep -Milliseconds 500
+              $current = Get-ScheduledTask -TaskPath $task.TaskPath -TaskName $task.TaskName
+            } while ($current.State -eq 'Running' -and (Get-Date) -lt $deadline)
+            if ($current.State -eq 'Running') { throw "Task $($task.TaskName) timed out." }
+            $info = Get-ScheduledTaskInfo -TaskPath $task.TaskPath -TaskName $task.TaskName
+            $expected = if ($task.TaskName -eq 'freshness') { 0 } else { 2 }
+            if ($info.LastTaskResult -ne $expected) { throw "Task $($task.TaskName) result $($info.LastTaskResult), expected $expected." }
+            $results += [pscustomobject]@{ task = $task.TaskName; result = $info.LastTaskResult }
           }
-      - name: Run ShellCheck
-        run: shellcheck install.sh uninstall.sh bin/* scripts/*.sh tests/*.sh
-      - name: Run isolated installer smoke test
-        run: bash tests/install-smoke.sh
+          Get-ScheduledTask -TaskPath '\LatticeMind\' | ForEach-Object { Unregister-ScheduledTask -TaskPath $_.TaskPath -TaskName $_.TaskName -Confirm:$false }
+          if (@(Get-ScheduledTask -TaskPath '\LatticeMind\' -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Native scheduler tasks remained registered.' }
+          [pscustomobject]@{
+            schema = 'native-evidence-v1'
+            platform = 'windows'
+            runtime = 'python-3.11.9-embed-x64'
+            tasks = $results
+            cleanup = 'passed'
+          } | ConvertTo-Json -Depth 4 | Set-Content evidence/windows/native-evidence.json -Encoding utf8
+      - name: Validate real ARM64 package selection (execution unavailable on x64 runner)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force evidence/windows | Out-Null
+          Invoke-WebRequest -Uri https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-arm64.zip -OutFile evidence/windows/python-arm64.zip
+          if ((Get-FileHash evidence/windows/python-arm64.zip -Algorithm SHA256).Hash.ToLower() -ne '1a6dae49d15320270a7141f93b574ff7686a7a526efa65e63ddbebf9b409929a') { throw 'ARM64 runtime hash mismatch' }
+          Remove-Item evidence/windows/python-arm64.zip -Force
+          [pscustomobject]@{
+            schema = 'native-package-evidence-v1'
+            architecture = 'arm64'
+            sha256 = '1a6dae49d15320270a7141f93b574ff7686a7a526efa65e63ddbebf9b409929a'
+            execution = 'unavailable-on-windows-2022-x64'
+          } | ConvertTo-Json | Set-Content evidence/windows/arm64-package.json -Encoding utf8
+      - name: Upload sanitized Windows evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-windows
+          path: evidence/windows/
+          if-no-files-found: error
