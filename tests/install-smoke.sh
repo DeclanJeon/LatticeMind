@@ -10,7 +10,11 @@ export XDG_DATA_HOME="$HOME/.local/share"
 export PATH="$HOME/bin:$PATH"
 VAULT="$SANDBOX/vault"
 mkdir -p "$HOME/bin" "$HOME/.gjc/skills/obsidian-save" "$VAULT"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "$HOME/gjc-args"\nexit 0\n' > "$HOME/bin/gjc"
+cat > "$HOME/bin/gjc" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$HOME/gjc-args"
+exit 0
+EOF
 chmod 755 "$HOME/bin/gjc"
 printf '%s\n' '# Existing vault instructions' > "$VAULT/AGENTS.md"
 printf '%s\n' '# User-authored note' 'This must survive installation.' > "$VAULT/existing.md"
