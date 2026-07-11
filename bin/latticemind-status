@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# shellcheck disable=SC1007
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 CORE_ROOT="$SCRIPT_DIR"
 [[ -d "$CORE_ROOT/latticemind_core" ]] || { printf 'Installed package root unavailable.\n' >&2; exit 69; }

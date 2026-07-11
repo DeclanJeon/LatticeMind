@@ -90,8 +90,8 @@ BACKUP_DIR="$DATA_DIR/backups/$STAMP"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/latticemind-install.XXXXXX")"
 mkdir -p "$VAULT" "$CONFIG_DIR" "$DATA_DIR" "$BIN_DIR" "$BACKUP_DIR"
 TRANSACTION_LOG="$DATA_DIR/transactions-$STAMP.jsonl"
-MANIFEST_PATH="$DATA_DIR/manifest-v1.json"
 : > "$TRANSACTION_LOG"
+# shellcheck disable=SC2034
 INSTALL_COMMITTED=0
 rollback_transaction() {
   python3 -I - "$TRANSACTION_LOG" <<'PY'
@@ -113,7 +113,8 @@ for rec in reversed([json.loads(x) for x in log.read_text().splitlines() if x.st
         pass
 PY
 }
-trap 'status=$?; if ((status != 0 && INSTALL_COMMITTED == 0)); then rollback_transaction || true; fi; rm -rf "$TMP_DIR"; exit "$status"' EXIT
+# shellcheck disable=SC2154
+trap 'status=$?; if (( status != 0 && INSTALL_COMMITTED == 0 )); then rollback_transaction || true; fi; rm -rf "$TMP_DIR"; exit "$status"' EXIT
 : > "$TRANSACTION_LOG"
 record_operation() {
   local output="$1" type="$2" created="$3" backup="${4:-}" target="${5:-}" marker="${6:-}"
@@ -566,6 +567,7 @@ tmp = out.with_suffix(".tmp")
 tmp.write_text(json.dumps({"schema":"manifest-v1","owned":records}, sort_keys=True, separators=(",",":"))+"\n")
 os.replace(tmp, out)
 PY
+# shellcheck disable=SC2034
 INSTALL_COMMITTED=1
 
 printf '\nLatticeMind is ready.\n'

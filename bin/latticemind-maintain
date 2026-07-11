@@ -26,6 +26,7 @@ case "$MODE" in
     [[ "$GRANT" == "scheduled-write:$MODE" ]] || { printf 'Write job requires an explicit scheduled-write grant: %s\n' "$MODE" >&2; exit 73; } ;;
   *) printf 'Unknown maintenance mode.\n' >&2; exit 64 ;;
 esac
+# shellcheck disable=SC1007
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 CORE_ROOT="$SCRIPT_DIR"
 [[ -d "$CORE_ROOT/latticemind_core" ]] || { printf 'Installed package root unavailable.\n' >&2; exit 69; }

@@ -36,7 +36,7 @@ fetch "$BOOTSTRAP_BASE/scripts/latticemind-verify" "$BOOTSTRAP_DIR/scripts/latti
 fetch "$BOOTSTRAP_BASE/latticemind_core/release.py" "$BOOTSTRAP_DIR/latticemind_core/release.py"
 fetch "$BOOTSTRAP_BASE/latticemind_core/trust_root.py" "$BOOTSTRAP_DIR/latticemind_core/trust_root.py"
 fetch "$BOOTSTRAP_BASE/latticemind_core/__init__.py" "$BOOTSTRAP_DIR/latticemind_core/__init__.py"
-verify_pin "a958c1c5475d3bcdb5ba863e24ce252c137860ce95ad19a611fd2660c4c57b2d" "$BOOTSTRAP_DIR/scripts/install-local.sh"
+verify_pin "2b085c3ac9ef408be250c8ba65723008b0512d6a11988fcd4c0bd26b0041efd8" "$BOOTSTRAP_DIR/scripts/install-local.sh"
 verify_pin "2e4ab0eff554e1b4dc64e877cbd4fcb1c8aef9029f7d67cc31306cc5cd0a3be5" "$BOOTSTRAP_DIR/scripts/latticemind-verify"
 verify_pin "cc176a27acf247cbc8213767f330a626c604f8d28b6d3ffc8328a67bf6022e09" "$BOOTSTRAP_DIR/latticemind_core/release.py"
 verify_pin "0d005eab9b2f4df946e90ed0db6e44ad1320309023a05d228a79ce8ba40f0f11" "$BOOTSTRAP_DIR/latticemind_core/trust_root.py"
