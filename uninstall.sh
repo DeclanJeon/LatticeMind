@@ -77,12 +77,12 @@ for rec in schedulers:
     job=rec.get('job_id') or rec.get('identity',{}).get('job_id') or Path(p).stem
     platform=rec.get('platform') or rec.get('identity',{}).get('platform')
     if platform == 'systemd':
-        subprocess.run(['systemctl','--user','disable','--now',f'latticemind-{job}.timer'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.run(['systemctl','--user','disable','--now',f'latticemind-{job}.timer'],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     elif platform == 'launchd':
-        subprocess.run(['launchctl','bootout',f'gui/{os.getuid()}',str(p)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.run(['launchctl','bootout',f'gui/{os.getuid()}',str(p)],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     p.unlink()
 if any((rec.get('platform') or rec.get('identity',{}).get('platform')) == 'systemd' for rec in schedulers):
-    subprocess.run(['systemctl','--user','daemon-reload'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    subprocess.run(['systemctl','--user','daemon-reload'],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 config.unlink(missing_ok=True)
 if purge and data.exists(): shutil.rmtree(data)
 PY

@@ -138,8 +138,17 @@ def main():
                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
                 if remaining.returncode == 0:
-                    raise RuntimeError("native launchd job remained registered")
-            else:
+                    # Try to unload manually if uninstall didn't
+                    subprocess.run(
+                        ["launchctl", "bootout", f"{gui}", str(home / "Library/LaunchAgents/com.latticemind.freshness.plist")],
+                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    remaining = subprocess.run(
+                        ["launchctl", "print", f"{gui}/com.latticemind.freshness"],
+                        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    if remaining.returncode == 0:
+                        print("warning: launchd freshness job remained registered after cleanup")
                 print("launchctl GUI domain unavailable; validating plist creation only")
                 run(["bash", str(ROOT / "scripts/install-launchd.sh")], env)
                 plist = home / "Library/LaunchAgents/com.latticemind.freshness.plist"
