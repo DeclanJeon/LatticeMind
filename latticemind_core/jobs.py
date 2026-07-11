@@ -10,7 +10,10 @@ from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 import os
 import contextlib
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 SCHEMA = "job-definition-v1"
 OWNER = "latticemind-job-v1"
@@ -189,12 +192,14 @@ def run_persisted_slot(path, j, slot, execute, scheduled=None, now=None):
     lock_path = p.with_name(p.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         state = SlotState()
         state.load(p)
         result = run_slot(j, slot, state, execute, scheduled=scheduled, now=now)
         state.save(p)
-        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        if fcntl is not None:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
         return result
 
 def status_jobs(profile="observe", grants=None):

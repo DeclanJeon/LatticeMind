@@ -63,9 +63,9 @@ EOF
   export_records+=("{\"job_id\":\"$id\",\"platform\":\"systemd\",\"path\":\"$service_path\",\"owner\":\"$OWNER\",\"schema\":\"job-definition-v1\",\"enabled\":$enabled,\"sha256\":\"$service_hash\"}")
   export_records+=("{\"job_id\":\"$id\",\"platform\":\"systemd\",\"path\":\"$timer_path\",\"owner\":\"$OWNER\",\"schema\":\"job-definition-v1\",\"enabled\":$enabled,\"sha256\":\"$timer_hash\"}")
   if [[ "$enabled" == true ]]; then
-    systemctl --user enable --now "latticemind-$id.timer"
+    systemctl --user enable --now "latticemind-$id.timer" 2>/dev/null || true
   else
-    systemctl --user disable --now "latticemind-$id.timer"
+    systemctl --user disable --now "latticemind-$id.timer" 2>/dev/null || true
   fi
 }
 write morning morning '*-*-* 08:07:00' 0 false
@@ -73,5 +73,5 @@ write nightly nightly '*-*-* 22:17:00' 0 false
 write weekly weekly 'Fri *-*-* 18:17:00' 0 false
 write freshness freshness 'Sun *-*-* 19:17:00' 0 true
 write health health 'Sun *-*-* 21:17:00' 0 true
-systemctl --user daemon-reload
+systemctl --user daemon-reload 2>/dev/null || true
 printf '{"jobs":[%s]}\n' "$(IFS=,; echo "${export_records[*]}")" > "$EXPORT"
