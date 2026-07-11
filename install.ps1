@@ -38,7 +38,7 @@ if (-not $PSScriptRoot) {
     Invoke-WebRequest -Uri "$BootstrapBase/latticemind_core/__init__.py" -OutFile (Join-Path $BootstrapRoot 'latticemind_core\__init__.py') -UseBasicParsing
     $BootstrapPins = @{
         $Verifier = '67c919617ee354825374516574219a0b1774aabdd50a9069c32060a5225a94dd'
-        (Join-Path $BootstrapRoot 'latticemind_core\release.py') = 'cc176a27acf247cbc8213767f330a626c604f8d28b6d3ffc8328a67bf6022e09'
+        (Join-Path $BootstrapRoot 'latticemind_core\release.py') = 'd4c1f8c1cc5d45998cda64c3739bb2be6c5a929fe6f1387b25122127c6867758'
         (Join-Path $BootstrapRoot 'latticemind_core\trust_root.py') = '0d005eab9b2f4df946e90ed0db6e44ad1320309023a05d228a79ce8ba40f0f11'
         (Join-Path $BootstrapRoot 'latticemind_core\__init__.py') = '9d7c4b56155e3f94a61293858aea80fa312975bd92ca2d413f95c7f1f0f5d536'
     }
