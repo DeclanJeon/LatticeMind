@@ -61,7 +61,7 @@ bash scripts/install-local.sh --vault /path/to/vault --name "Your Name"
                        /            |             \
                 portable skills  AI-first rules  scheduled care
               /   /   /   /   \       |         /   |   |   \
-           GJC OMP Codex Claude OpenCode ...   AM nightly week health
+           GJC OMP Codex Claude OpenCode ...   AM night week fresh health
 ```
 
 | Layer | Installed behavior |
@@ -69,7 +69,7 @@ bash scripts/install-local.sh --vault /path/to/vault --name "Your Name"
 | Vault | Builder-ready folders, templates, Bases, dashboard, operating manual |
 | Knowledge | Source-preserving notes, dated claims, confidence labels, wikilinks |
 | Agent layer | GJC · Codex · Claude Code · OpenCode · Gemini CLI · Pi · OMP · Hermes |
-| Automation | Morning note, nightly consolidation, weekly review, health audit |
+| Automation | Morning note, nightly consolidation, weekly review, external freshness audit, health audit |
 | Recovery | Timestamped backups and a content-preserving uninstaller |
 
 Representative skills:
@@ -115,6 +115,11 @@ LatticeMind therefore makes these choices by default:
 6. **Uninstall preserves knowledge.** Vault notes and scaffold folders remain;
    only integration files are removed or restored from backup.
 
+Nightly consolidation keeps the vault internally coherent. The separate freshness
+loop checks whether date-sensitive claims still match current primary sources.
+Reviewed notes use `last_verified`, `volatility`, and `verification_sources`;
+unavailable or inconclusive sources are reported rather than silently accepted.
+
 ## Scheduled maintenance
 
 On Linux, systemd user timers are installed. On Windows, equivalent Task
@@ -125,11 +130,17 @@ Scheduler jobs are registered:
 | Morning | 08:07 | Create or update today's note from known facts |
 | Nightly | 22:17 | Reconcile, synthesize, and inspect recent managed notes |
 | Weekly | Friday 18:17 | Build an evidence-linked weekly review |
+| Freshness | Sunday 19:17 | Revalidate up to 20 overdue claims against current primary sources |
 | Health | Sunday 21:17 | Run a report-first structural audit |
 
 GJC is preferred as the unattended backend, followed by OMP, Codex, Claude
 Code, OpenCode, and Pi. Disable automation with `--no-schedule` on Unix or
 `-NoSchedule` on Windows.
+
+Run the external check manually with `latticemind-maintain freshness`. Volatility
+TTLs are `high=7`, `medium=30`, `low=90`, and `static=365` days. The audit updates
+`Logs/LatticeMind Freshness.md` in place and never treats URL availability alone
+as factual verification.
 
 ## Installer options
 
@@ -169,8 +180,9 @@ powershell -File "$env:LOCALAPPDATA\LatticeMind\current\uninstall.ps1"
 - At least one supported agent CLI
 - systemd user services or Windows Task Scheduler for optional maintenance
 
-Research commands may require provider keys supported by the upstream project.
-Core vault commands do not require extra research API keys.
+External freshness audits require the selected agent to have web or provider
+access. Without it, claims remain blocked or `needs-review`; they are not marked
+verified. Core vault commands do not require extra research API keys.
 
 ## Architecture
 

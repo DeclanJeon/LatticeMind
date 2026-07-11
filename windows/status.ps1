@@ -24,5 +24,7 @@ Write-Host "  Gemini CLI: $(Count-Files (Join-Path $Vault '.gemini\commands') '*
 Write-Host "  Pi: $(Count-Files (Join-Path $Vault '.pi\prompts') '*.md') prompts"
 Write-Host "  OMP: $(Count-Files (Join-Path $HOME '.omp\agent\managed-skills') 'SKILL.md') skills"
 Write-Host "  Hermes: $(Count-Files (Join-Path $HOME '.hermes\skills\obsidian-second-brain') 'SKILL.md') skills"
+$FreshnessReport = Join-Path $Vault 'Logs\LatticeMind Freshness.md'
+Write-Host "  Freshness report: $(if (Test-Path $FreshnessReport) { 'ready' } else { 'not run yet' })"
 $Tasks = @(Get-ScheduledTask -TaskPath '\LatticeMind\' -ErrorAction SilentlyContinue)
-Write-Host "  Scheduled tasks: $($Tasks.Count)/4"
+Write-Host "  Scheduled tasks: $($Tasks.Count)/5"

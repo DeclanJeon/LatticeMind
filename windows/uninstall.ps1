@@ -19,7 +19,7 @@ for ($Index = $Records.Count - 1; $Index -ge 0; $Index--) {
     }
 }
 
-foreach ($Name in 'Morning', 'Nightly', 'Weekly', 'Health') {
+foreach ($Name in 'Morning', 'Nightly', 'Weekly', 'Freshness', 'Health') {
     Unregister-ScheduledTask -TaskPath '\LatticeMind\' -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
 }
 

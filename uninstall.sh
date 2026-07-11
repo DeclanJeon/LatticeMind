@@ -10,8 +10,9 @@ source "$CONFIG_FILE"
 if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
   systemctl --user disable --now \
     latticemind-morning.timer latticemind-nightly.timer \
-    latticemind-weekly.timer latticemind-health.timer >/dev/null 2>&1 || true
-  rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/"latticemind-{morning,nightly,weekly,health}.{service,timer}
+    latticemind-weekly.timer latticemind-freshness.timer \
+    latticemind-health.timer >/dev/null 2>&1 || true
+  rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/"latticemind-{morning,nightly,weekly,freshness,health}.{service,timer}
   systemctl --user daemon-reload
 fi
 

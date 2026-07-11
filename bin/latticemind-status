@@ -31,16 +31,18 @@ counts = {
 for name, count in counts.items():
     print(f"  {name}: {count} resources")
 print(f"  Index: {'ready' if (vault / 'index.md').exists() else 'not generated yet'}")
+freshness = vault / "Logs" / "LatticeMind Freshness.md"
+print(f"  Freshness report: {'ready' if freshness.exists() else 'not run yet'}")
 PY
 
 if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
   active=0
-  for timer in morning nightly weekly health; do
+  for timer in morning nightly weekly freshness health; do
     if systemctl --user is-enabled --quiet "latticemind-$timer.timer"; then
       active=$((active + 1))
     fi
   done
-  printf '  Timers: %s/4 enabled\n' "$active"
+  printf '  Timers: %s/5 enabled\n' "$active"
 else
   printf '  Timers: unsupported\n'
 fi

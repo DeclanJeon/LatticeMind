@@ -39,13 +39,16 @@ EOF
 write_service morning "LatticeMind morning note"
 write_service nightly "LatticeMind nightly consolidation"
 write_service weekly "LatticeMind weekly review"
+write_service freshness "LatticeMind external freshness audit"
 write_service health "LatticeMind health audit"
 write_timer morning "Run LatticeMind every morning" "*-*-* 08:07:00" "5m"
 write_timer nightly "Run LatticeMind nightly" "*-*-* 22:17:00" "10m"
 write_timer weekly "Run LatticeMind weekly" "Fri *-*-* 18:17:00" "10m"
+write_timer freshness "Revalidate LatticeMind claims against external sources" "Sun *-*-* 19:17:00" "10m"
 write_timer health "Run LatticeMind health audit" "Sun *-*-* 21:17:00" "10m"
 
 systemctl --user daemon-reload
 systemctl --user enable --now \
   latticemind-morning.timer latticemind-nightly.timer \
-  latticemind-weekly.timer latticemind-health.timer
+  latticemind-weekly.timer latticemind-freshness.timer \
+  latticemind-health.timer

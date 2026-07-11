@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('morning', 'nightly', 'weekly', 'health')]
+    [ValidateSet('morning', 'nightly', 'weekly', 'freshness', 'health')]
     [string]$Mode
 )
 
@@ -23,6 +23,10 @@ switch ($Mode) {
     'weekly' {
         $Skills = 'obsidian-review'
         $Prompt = "Create this week's evidence-linked review from notes changed in the last seven days under $Scope. Leave unknowns explicit."
+    }
+    'freshness' {
+        $Skills = 'obsidian-research,obsidian-reconcile,obsidian-health'
+        $Prompt = "Run a bounded external freshness audit for at most 20 notes under $Scope. This is separate from internal nightly consolidation. Select notes with external sources, date-sensitive factual claims, or existing freshness metadata, prioritizing never-verified and overdue notes. Use volatility TTLs high=7 days, medium=30, low=90, static=365; default to medium when uncertain. Re-check claims against current primary or official sources outside the vault. A reachable URL alone is not verification: compare each factual claim with the source. If a source is unavailable or inconclusive, do not mark the claim verified; record blocked or needs-review. Update only supported claims, preserve user prose and raw sources, and never delete notes. Maintain YAML last_verified, volatility, and verification_sources for reviewed notes. Update Logs/LatticeMind Freshness.md in place with checked, changed, stale, blocked, and next-due sections and source citations."
     }
     'health' {
         $Skills = 'obsidian-health'

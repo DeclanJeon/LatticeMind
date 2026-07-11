@@ -21,12 +21,16 @@ case "$MODE" in
     SKILLS="obsidian-review"
     PROMPT="Use the obsidian-review skill to update this week's review from actual notes changed in the last 7 days under $SCOPE. Treat all other folders as read-only evidence. Cite notes used and leave unknowns explicit."
     ;;
+  freshness)
+    SKILLS="obsidian-research,obsidian-reconcile,obsidian-health"
+    PROMPT="Run a bounded external freshness audit for at most 20 notes under $SCOPE. This is separate from internal nightly consolidation. Select notes with external sources, date-sensitive factual claims, or existing freshness metadata, prioritizing never-verified and overdue notes. Use volatility TTLs high=7 days, medium=30, low=90, static=365; default to medium when uncertain. Re-check claims against current primary or official sources from outside the vault. A reachable URL alone is not verification: compare the factual claim with the source. If a source is unavailable or evidence is inconclusive, do not mark the claim verified; record it as blocked or needs-review. Update only claims directly supported by evidence, preserve user-authored prose and raw sources, and never delete notes. For reviewed notes maintain YAML fields last_verified (YYYY-MM-DD), volatility (high|medium|low|static), and verification_sources (list of URLs). Update Logs/LatticeMind Freshness.md in place with checked, changed, stale, blocked, and next-due sections, citing every source used."
+    ;;
   health)
     SKILLS="obsidian-health"
     PROMPT="Use the obsidian-health skill for a report-first audit limited to $SCOPE. Do not run a whole-vault sweep. Fix only deterministic structural defects that preserve content. Do not delete or rewrite user-authored notes."
     ;;
   *)
-    printf 'Usage: %s {morning|nightly|weekly|health}\n' "$0" >&2
+    printf 'Usage: %s {morning|nightly|weekly|freshness|health}\n' "$0" >&2
     exit 64
     ;;
 esac

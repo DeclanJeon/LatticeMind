@@ -9,6 +9,7 @@ $Definitions = @(
     @{ Name = 'Morning'; Mode = 'morning'; Trigger = New-ScheduledTaskTrigger -Daily -At '08:07' },
     @{ Name = 'Nightly'; Mode = 'nightly'; Trigger = New-ScheduledTaskTrigger -Daily -At '22:17' },
     @{ Name = 'Weekly'; Mode = 'weekly'; Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At '18:17' },
+    @{ Name = 'Freshness'; Mode = 'freshness'; Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At '19:17' },
     @{ Name = 'Health'; Mode = 'health'; Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At '21:17' }
 )
 
@@ -21,4 +22,4 @@ foreach ($Definition in $Definitions) {
         -Description "LatticeMind $($Definition.Mode) knowledge maintenance" -Force | Out-Null
 }
 
-Write-Host 'Registered four LatticeMind scheduled tasks.'
+Write-Host 'Registered five LatticeMind scheduled tasks.'
