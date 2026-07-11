@@ -7,8 +7,10 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import selectors
 import subprocess
 import tempfile
+import time
 
 from .backends import BackendAdapter
 
@@ -64,13 +66,61 @@ class BackendRunner:
                 kwargs["start_new_session"] = True
             proc = subprocess.Popen(command, **kwargs)
             timed_out = False
+            captured_stdout = b""
+            captured_stderr = b""
             try:
-                stdout, stderr = proc.communicate(timeout=self.timeout)
-            except subprocess.TimeoutExpired:
+                # Read in bounded chunks to enforce output limit during capture
+                sel = selectors.DefaultSelector()
+                if proc.stdout:
+                    sel.register(proc.stdout, selectors.EVENT_READ, "stdout")
+                if proc.stderr:
+                    sel.register(proc.stderr, selectors.EVENT_READ, "stderr")
+                deadline = time.monotonic() + self.timeout
+                while sel.get_map():
+                    remaining = max(0.01, deadline - time.monotonic()) if deadline else None
+                    ready = sel.select(timeout=min(remaining, 1.0) if remaining else 1.0)
+                    for key, _ in ready:
+                        chunk = key.fileobj.read1(65536) if hasattr(key.fileobj, 'read1') else key.fileobj.read(65536)
+                        if not chunk:
+                            sel.unregister(key.fileobj)
+                            continue
+                        if key.data == "stdout":
+                            captured_stdout += chunk
+                            if len(captured_stdout) > self.output_limit:
+                                captured_stdout = captured_stdout[:self.output_limit]
+                                sel.unregister(key.fileobj)
+                                key.fileobj.close()
+                        else:
+                            captured_stderr += chunk
+                            if len(captured_stderr) > self.output_limit:
+                                captured_stderr = captured_stderr[:self.output_limit]
+                                sel.unregister(key.fileobj)
+                                key.fileobj.close()
+                    if deadline and time.monotonic() >= deadline:
+                        timed_out = True
+                        _terminate(proc)
+                        sel.close()
+                        break
+                sel.close()
+                # Close any remaining pipes and wait for process completion
+                if proc.stdout and not proc.stdout.closed:
+                    proc.stdout.close()
+                if proc.stderr and not proc.stderr.closed:
+                    proc.stderr.close()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    _terminate(proc)
+                    proc.wait()
+                stdout, stderr = captured_stdout, captured_stderr
+            except (subprocess.TimeoutExpired, OSError):
                 timed_out = True
                 _terminate(proc)
-                stdout, stderr = proc.communicate()
-
+                try:
+                    stdout, stderr = proc.communicate(timeout=5)
+                except Exception:
+                    stdout, stderr = captured_stdout or b"", captured_stderr or b""
             evidence = None
             if proc.returncode == 0 and not timed_out:
                 evidence = self._read_evidence(output, adapter.output_schema)
