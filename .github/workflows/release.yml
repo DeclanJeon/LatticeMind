@@ -37,6 +37,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
 
       - name: Build all agent distributions
         shell: bash
@@ -84,6 +85,28 @@ jobs:
                       archive.write(path, path.as_posix())
           PY
 
+      - name: Compose release notes
+        shell: bash
+        run: |
+          previous="$(gh release view --repo '${{ github.repository }}' --json tagName --jq .tagName 2>/dev/null || true)"
+          {
+            printf '## What changed\n\n'
+            if [[ -n "$previous" ]]; then
+              git log "${previous}..${{ steps.source.outputs.sha }}" --pretty='- %s (`%h`)'
+            else
+              git log -1 '${{ steps.source.outputs.sha }}' --pretty='- %s (`%h`)'
+            fi
+            printf '\n\n## Distribution\n\n'
+            printf '%s\n' \
+              '- Windows PowerShell installer with Task Scheduler support' \
+              '- Linux and macOS installer with systemd support' \
+              '- GJC, Codex, Claude Code, OpenCode, Gemini CLI, Pi, OMP, and Hermes adapters' \
+              '- Five non-destructive vault presets in `latticemind-dist.zip`'
+            if [[ -n "$previous" ]]; then
+              printf '\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/%s...${{ steps.source.outputs.version }}\n' "$previous"
+            fi
+          } > release-notes.md
+
       - name: Publish GitHub Release
         shell: bash
         run: |
@@ -92,5 +115,5 @@ jobs:
             --repo '${{ github.repository }}' \
             --target '${{ steps.source.outputs.sha }}' \
             --title 'LatticeMind ${{ steps.source.outputs.version }}' \
-            --generate-notes \
+            --notes-file release-notes.md \
             --latest
