@@ -4,7 +4,7 @@ PURGE=0; [[ "${1:-}" == "--purge-state" ]] && PURGE=1
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/latticemind"
 CONFIG_FILE="$CONFIG_DIR/config-v1.json"
 [[ -r "$CONFIG_FILE" ]] || { printf 'LatticeMind is not installed.\n'; exit 0; }
-python3 -I - "$CONFIG_FILE" "$PURGE" <<'PY'
+python3 - "$CONFIG_FILE" "$PURGE" <<'PY'
 import json,sys,hashlib,os,subprocess,shutil
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))

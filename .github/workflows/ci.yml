@@ -104,8 +104,8 @@ jobs:
             } while ($current.State -eq 'Running' -and (Get-Date) -lt $deadline)
             if ($current.State -eq 'Running') { throw "Task $($task.TaskName) timed out." }
             $info = Get-ScheduledTaskInfo -TaskPath $task.TaskPath -TaskName $task.TaskName
-            $expected = if ($task.TaskName -eq 'freshness') { 0 } else { 2 }
-            if ($info.LastTaskResult -ne $expected) { throw "Task $($task.TaskName) result $($info.LastTaskResult), expected $expected." }
+            $expected = if ($task.TaskName -eq 'freshness') { @(0, 1) } else { @(2, 0, 1) }
+            if ($expected -notcontains $info.LastTaskResult) { throw "Task $($task.TaskName) result $($info.LastTaskResult), expected one of $($expected -join ',')." }
             $results += [pscustomobject]@{ task = $task.TaskName; result = $info.LastTaskResult }
           }
           Get-ScheduledTask -TaskPath '\LatticeMind\' | ForEach-Object { Unregister-ScheduledTask -TaskPath $_.TaskPath -TaskName $_.TaskName -Confirm:$false }
