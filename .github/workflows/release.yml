@@ -122,7 +122,9 @@ jobs:
       - name: Verify digest-bound signed artifact
         shell: bash
         run: |
-          sha256sum -c candidate/release.tar.gz.sha256
+          if command -v sha256sum >/dev/null; then sha256sum -c candidate/release.tar.gz.sha256
+          elif command -v shasum >/dev/null; then shasum -a 256 -c candidate/release.tar.gz.sha256
+          else echo 'no sha256 verifier available'; exit 1; fi
           mkdir extracted && tar -xzf candidate/release.tar.gz -C extracted
           test -s extracted/release-manifest-v1.sig
           test -s extracted/latticemind-dist.zip
